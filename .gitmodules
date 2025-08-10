@@ -1,0 +1,9 @@
+[submodule "sdrtrunk"]
+	path = sdrtrunk
+	url = https://github.com/DSheirer/sdrtrunk.git
+[submodule "sdrtrunk-rdio-api"]
+	path = sdrtrunk-rdio-api
+	url = https://github.com/swiftraccoon/sdrtrunk-rdio-api.git
+[submodule "cpp-sdrtrunk-transcriber"]
+	path = cpp-sdrtrunk-transcriber
+	url = https://github.com/swiftraccoon/cpp-sdrtrunk-transcriber
