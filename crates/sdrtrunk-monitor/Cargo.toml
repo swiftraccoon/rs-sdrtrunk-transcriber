@@ -1,0 +1,78 @@
+[package]
+name = "sdrtrunk-monitor"
+version.workspace = true
+authors.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+description = "File monitoring service for SDRTrunk transcriber"
+
+[dependencies]
+# Internal dependencies
+sdrtrunk-core = { path = "../sdrtrunk-core" }
+sdrtrunk-database = { path = "../sdrtrunk-database" }
+
+# Async runtime
+tokio = { workspace = true }
+tokio-util = { workspace = true }
+futures = { workspace = true }
+
+# File system monitoring
+notify = { workspace = true }
+notify-debouncer-full = { workspace = true }
+
+# Serialization
+serde = { workspace = true }
+serde_json = { workspace = true }
+toml = { workspace = true }
+
+# Error handling and logging
+# Error handling uses custom implementations from sdrtrunk-core
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
+
+# Database
+sqlx = { workspace = true }
+
+# Date/time
+chrono = { workspace = true }
+time = { workspace = true }
+
+# Utilities
+uuid = { workspace = true }
+bytes = { workspace = true }
+crossbeam = { workspace = true }
+parking_lot = { workspace = true }
+dashmap = { workspace = true }
+
+# File I/O
+memmap2 = { workspace = true }
+
+# Configuration
+config = { workspace = true }
+directories = { workspace = true }
+
+# CLI (for standalone binary)
+clap = { workspace = true }
+
+# Async utilities
+async-recursion = "1.1"
+num_cpus = "1.16"
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["test-util"] }
+tempfile = { workspace = true }
+similar-asserts = { workspace = true }
+criterion = { workspace = true }
+
+[[bin]]
+name = "sdrtrunk-monitor"
+path = "src/main.rs"
+
+[lib]
+name = "sdrtrunk_monitor"
+path = "src/lib.rs"
+
+[[bench]]
+name = "monitor_bench"
+harness = false

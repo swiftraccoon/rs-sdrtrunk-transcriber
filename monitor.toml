@@ -1,0 +1,133 @@
+# SDRTrunk Monitor Configuration
+
+[watch]
+# Directory to watch for new MP3 files
+watch_directory = "/path/to/sdrtrunk/recordings"
+
+# File patterns to match (glob patterns)
+file_patterns = ["*.mp3"]
+
+# File extensions to monitor
+file_extensions = ["mp3"]
+
+# Minimum file size in bytes (ignore files smaller than this)
+min_file_size = 1024  # 1KB
+
+# Maximum file size in bytes (ignore files larger than this)
+max_file_size = 100_000_000  # 100MB
+
+# Debounce delay for file system events (milliseconds)
+debounce_delay_ms = 1000
+
+# Watch subdirectories recursively
+recursive = true
+
+# Follow symbolic links
+follow_symlinks = false
+
+[processing]
+# Processing interval in seconds
+processing_interval_seconds = 5
+
+# Number of concurrent processing workers
+processing_workers = 2
+
+# Maximum retry attempts for failed processing
+max_retry_attempts = 3
+
+# Retry delay in seconds (exponential backoff)
+retry_delay_seconds = 10
+
+# Processing timeout in seconds
+processing_timeout_seconds = 300  # 5 minutes
+
+# Move files after processing
+move_after_processing = true
+
+# Delete files after processing (only if move_after_processing is false)
+delete_after_processing = false
+
+# Verify file integrity before processing
+verify_file_integrity = true
+
+[storage]
+# Archive directory for processed files
+archive_directory = "/path/to/archive"
+
+# Failed files directory
+failed_directory = "/path/to/failed"
+
+# Temporary processing directory
+temp_directory = "/tmp/sdrtrunk-monitor"
+
+# Organize archive by date (YYYY/MM/DD structure)
+organize_by_date = true
+
+# Organize archive by system ID
+organize_by_system = true
+
+# Compress archived files
+compress_archive = false
+
+# Compression level (0-9 for gzip/zstd)
+compression_level = 6
+
+# Maximum archive directory size in bytes (cleanup old files when exceeded)
+max_archive_size = 10_000_000_000  # 10GB
+
+# Archive retention days (delete files older than this)
+archive_retention_days = 90
+
+[database]
+# Database connection URL
+url = "postgresql://username:password@localhost/sdrtrunk"
+
+# Maximum number of connections
+max_connections = 50
+
+# Minimum number of connections
+min_connections = 5
+
+# Connection timeout in seconds
+connect_timeout = 30
+
+# Idle timeout in seconds
+idle_timeout = 600
+
+[queue]
+# Maximum queue size (number of files)
+max_queue_size = 10000
+
+# Queue persistence file (for crash recovery)
+persistence_file = "/path/to/queue.json"
+
+# Priority queuing based on file age
+priority_by_age = true
+
+# Priority queuing based on file size
+priority_by_size = false
+
+# Batch processing size
+batch_size = 10
+
+[service]
+# Service name for logging
+name = "sdrtrunk-monitor"
+
+# Graceful shutdown timeout in seconds
+shutdown_timeout_seconds = 30
+
+# Health check interval in seconds
+health_check_interval_seconds = 60
+
+# Enable metrics collection
+enable_metrics = true
+
+# Metrics export interval in seconds
+metrics_interval_seconds = 300
+
+# Enable automatic restart on critical errors
+auto_restart = true
+
+# Maximum restart attempts
+max_restart_attempts = 5

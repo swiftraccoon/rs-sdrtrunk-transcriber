@@ -1,0 +1,298 @@
+name: Rust CI
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main, develop ]
+
+env:
+  CARGO_TERM_COLOR: always
+  RUST_BACKTRACE: 1
+  RUSTFLAGS: "-D warnings"
+
+jobs:
+  # Check formatting, linting, and basic compilation
+  check:
+    name: Check
+    runs-on: ubuntu-latest
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Install Rust toolchain
+      uses: dtolnay/rust-toolchain@stable
+      with:
+        toolchain: stable
+        components: rustfmt, clippy
+        
+    - name: Cache cargo registry
+      uses: actions/cache@v4
+      with:
+        path: |
+          ~/.cargo/registry/index/
+          ~/.cargo/registry/cache/
+          ~/.cargo/git/db/
+          target/
+        key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+        restore-keys: |
+          ${{ runner.os }}-cargo-
+          
+    - name: Check formatting
+      run: cargo fmt --all -- --check
+      
+    - name: Check compilation
+      run: cargo check --workspace --all-targets --all-features
+      
+    - name: Clippy analysis
+      run: |
+        cargo clippy --workspace --all-targets --all-features -- \
+          -D warnings \
+          -D clippy::all \
+          -D clippy::pedantic \
+          -D clippy::nursery \
+          -D clippy::cargo \
+          -A clippy::multiple_crate_versions
+
+  # Test across multiple platforms and Rust versions
+  test:
+    name: Test Suite
+    needs: check
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+        rust: [stable, beta, nightly]
+        exclude:
+          # Reduce CI load by testing nightly only on Ubuntu
+          - os: windows-latest
+            rust: nightly
+          - os: macos-latest
+            rust: nightly
+            
+    runs-on: ${{ matrix.os }}
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Install Rust toolchain
+      uses: dtolnay/rust-toolchain@stable
+      with:
+        toolchain: ${{ matrix.rust }}
+        components: llvm-tools-preview
+        
+    - name: Cache cargo registry
+      uses: actions/cache@v4
+      with:
+        path: |
+          ~/.cargo/registry/index/
+          ~/.cargo/registry/cache/
+          ~/.cargo/git/db/
+          target/
+        key: ${{ runner.os }}-${{ matrix.rust }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+        restore-keys: |
+          ${{ runner.os }}-${{ matrix.rust }}-cargo-
+          ${{ runner.os }}-cargo-
+          
+    - name: Install cargo-nextest
+      run: cargo install cargo-nextest --locked
+      
+    - name: Run tests with nextest
+      run: cargo nextest run --workspace --all-features
+      
+    - name: Run doctests
+      run: cargo test --doc --workspace --all-features
+
+  # Code coverage
+  coverage:
+    name: Code Coverage
+    needs: check
+    runs-on: ubuntu-latest
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Install Rust toolchain
+      uses: dtolnay/rust-toolchain@stable
+      with:
+        toolchain: stable
+        components: llvm-tools-preview
+        
+    - name: Cache cargo registry
+      uses: actions/cache@v4
+      with:
+        path: |
+          ~/.cargo/registry/index/
+          ~/.cargo/registry/cache/
+          ~/.cargo/git/db/
+          target/
+        key: ubuntu-coverage-cargo-${{ hashFiles('**/Cargo.lock') }}
+        restore-keys: |
+          ubuntu-coverage-cargo-
+          ubuntu-stable-cargo-
+          
+    - name: Install cargo-llvm-cov and cargo-nextest
+      run: |
+        cargo install cargo-llvm-cov --locked
+        cargo install cargo-nextest --locked
+        
+    - name: Generate coverage report
+      run: cargo llvm-cov nextest --workspace --all-features --lcov --output-path lcov.info
+      
+    - name: Upload coverage to Codecov
+      uses: codecov/codecov-action@v4
+      with:
+        files: lcov.info
+        fail_ci_if_error: true
+
+  # Security audit
+  security:
+    name: Security Audit
+    needs: check
+    runs-on: ubuntu-latest
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Install Rust toolchain
+      uses: dtolnay/rust-toolchain@stable
+      with:
+        toolchain: stable
+        
+    - name: Cache cargo registry
+      uses: actions/cache@v4
+      with:
+        path: |
+          ~/.cargo/registry/index/
+          ~/.cargo/registry/cache/
+          ~/.cargo/git/db/
+        key: ubuntu-audit-cargo-${{ hashFiles('**/Cargo.lock') }}
+        restore-keys: |
+          ubuntu-audit-cargo-
+          ubuntu-stable-cargo-
+          
+    - name: Install security audit tools
+      run: |
+        cargo install cargo-audit --locked
+        cargo install cargo-deny --locked
+        
+    - name: Run cargo audit
+      run: cargo audit --deny warnings
+      
+    - name: Run cargo deny
+      run: cargo deny check
+
+  # Memory safety with Miri (nightly only)
+  miri:
+    name: Miri
+    needs: check
+    runs-on: ubuntu-latest
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Install Rust nightly toolchain
+      uses: dtolnay/rust-toolchain@nightly
+      with:
+        components: miri
+        
+    - name: Cache cargo registry
+      uses: actions/cache@v4
+      with:
+        path: |
+          ~/.cargo/registry/index/
+          ~/.cargo/registry/cache/
+          ~/.cargo/git/db/
+          target/
+        key: ubuntu-miri-cargo-${{ hashFiles('**/Cargo.lock') }}
+        restore-keys: |
+          ubuntu-miri-cargo-
+          ubuntu-nightly-cargo-
+          
+    - name: Setup Miri
+      run: cargo miri setup
+      
+    - name: Run Miri
+      run: cargo miri test --workspace
+      env:
+        MIRIFLAGS: -Zmiri-strict-provenance -Zmiri-symbolic-alignment-check
+
+  # Benchmarks (optional, only on main branch)
+  benchmark:
+    name: Benchmarks
+    needs: check
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main'
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Install Rust toolchain
+      uses: dtolnay/rust-toolchain@stable
+      with:
+        toolchain: stable
+        
+    - name: Cache cargo registry
+      uses: actions/cache@v4
+      with:
+        path: |
+          ~/.cargo/registry/index/
+          ~/.cargo/registry/cache/
+          ~/.cargo/git/db/
+          target/
+        key: ubuntu-bench-cargo-${{ hashFiles('**/Cargo.lock') }}
+        restore-keys: |
+          ubuntu-bench-cargo-
+          ubuntu-stable-cargo-
+          
+    - name: Run benchmarks
+      run: cargo bench --workspace --all-features
+      
+    - name: Archive benchmark results
+      uses: actions/upload-artifact@v4
+      with:
+        name: benchmark-results
+        path: target/criterion/
+
+  # Documentation build
+  docs:
+    name: Documentation
+    needs: check
+    runs-on: ubuntu-latest
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Install Rust toolchain
+      uses: dtolnay/rust-toolchain@stable
+      with:
+        toolchain: stable
+        
+    - name: Cache cargo registry
+      uses: actions/cache@v4
+      with:
+        path: |
+          ~/.cargo/registry/index/
+          ~/.cargo/registry/cache/
+          ~/.cargo/git/db/
+          target/
+        key: ubuntu-docs-cargo-${{ hashFiles('**/Cargo.lock') }}
+        restore-keys: |
+          ubuntu-docs-cargo-
+          ubuntu-stable-cargo-
+          
+    - name: Build documentation
+      run: |
+        cargo doc --workspace --all-features --no-deps
+        echo '<meta http-equiv="refresh" content="0; url=rs_sdrtrunk_transcriber">' > target/doc/index.html
+      env:
+        RUSTDOCFLAGS: "--deny warnings --deny rustdoc::broken_intra_doc_links"
+        
+    - name: Deploy to GitHub Pages
+      if: github.ref == 'refs/heads/main'
+      uses: peaceiris/actions-gh-pages@v3
+      with:
+        github_token: ${{ secrets.GITHUB_TOKEN }}
+        publish_dir: target/doc
+        force_orphan: true

@@ -1,0 +1,98 @@
+# clippy configuration for production Rust code
+# Enforces strictest linting standards for professional development
+
+# Cognitive complexity threshold (lower = stricter)
+cognitive-complexity-threshold = 25
+
+# Type complexity threshold
+type-complexity-threshold = 100
+
+# Single char lifetime names threshold
+single-char-binding-names-threshold = 1
+
+# Too many arguments threshold
+too-many-arguments-threshold = 5
+
+# Too many lines threshold for functions
+too-many-lines-threshold = 80
+
+# Trivial copy pass by value size threshold (in bytes)
+trivial-copy-size-limit = 32
+
+# Pass by value size limit (in bytes)
+pass-by-value-size-limit = 64
+
+# Large type pass by move size threshold
+too-large-for-stack = 200
+
+# Vector initialization with large capacity
+vec-box-size-threshold = 4096
+
+# Large const arrays on stack
+# Large const arrays handled by array-size-threshold
+
+# Large stack arrays threshold
+# Large stack arrays handled by array-size-threshold
+
+# Large enum variant threshold
+enum-variant-size-threshold = 200
+
+# Struct excessive bools threshold
+max-struct-bools = 3
+
+# FnParams excessive bools threshold
+max-fn-params-bools = 3
+
+# Unreadable literal threshold
+unreadable-literal-lint-fractions = true
+
+# Upper case acronyms aggressive mode
+upper-case-acronyms-aggressive = true
+
+# Avoid breaking exported API
+avoid-breaking-exported-api = true
+
+# Allow comparison chain length
+# Comparison chain handled by default clippy settings
+
+# Disallowed names (add project-specific banned identifiers)
+# Disallowed names handled via workspace lints
+
+# Disallowed types (add project-specific banned types)
+# Removed disallowed-types - handle via workspace lints instead
+
+# Disallowed macros
+# Disallowed macros can be enforced via workspace lints
+
+# Disallowed methods
+# Disallowed methods can be enforced via workspace lints
+
+# Standard library path imports to avoid
+# Removed invalid disallowed-imports field
+
+# Blacklisted names for functions/variables
+# Using disallowed-names instead of deprecated blacklisted-names
+
+# Minimum supported Rust version for compatibility lints
+msrv = "1.85.0"
+
+# Enforce documentation for public items
+missing-docs-in-crate-items = true
+
+# Allow private module inception (nested modules)
+allow-private-module-inception = false
+
+# Suppress lints in tests
+suppress-restriction-lint-in-const = false
+
+# Check private items for documentation
+check-private-items = true
+
+# Enable additional restriction lints by default
+# These should be explicitly allowed in code when needed
+# Configuration for documentation lints handled via workspace lints
+
+# Arithmetic side effects threshold
+arithmetic-side-effects-allowed = []
+arithmetic-side-effects-allowed-binary = []
+arithmetic-side-effects-allowed-unary = []

@@ -1,0 +1,274 @@
+# Rust build artifacts
+/target/
+**/target/
+Cargo.lock
+*.pdb
+
+# IDE and editor files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS generated files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+desktop.ini
+
+# Temporary files
+*.tmp
+*.temp
+*.log
+*.pid
+*.seed
+*.coverage
+*.nyc_output
+
+# Coverage reports
+lcov.info
+coverage/
+target/llvm-cov/
+target/coverage/
+target/tarpaulin/
+*.profdata
+*.profraw
+
+# Benchmark results
+target/criterion/
+target/bench/
+flamegraph.svg
+perf.data*
+
+# Documentation
+target/doc/
+
+# Security and audit files
+audit.toml.lock
+deny.toml.lock
+
+# Environment files
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+# Runtime and deployment
+*.sock
+*.pid
+*.log
+logs/
+
+# Backup files
+*.bak
+*.backup
+*.orig
+
+# Rust-analyzer
+rust-project.json
+
+# Vim files
+Session.vim
+.netrwhist
+
+# Emacs files
+*~
+\#*\#
+/.emacs.desktop
+/.emacs.desktop.lock
+*.elc
+auto-save-list
+tramp
+.\#*
+
+# MacOS
+*.dSYM/
+
+# Windows
+*.exe
+*.pdb
+
+# Linux
+a.out
+core
+
+# Profiling
+cachegrind.out.*
+callgrind.out.*
+massif.out.*
+*.cachegrind
+*.callgrind
+*.massif
+*.memcheck
+
+# Fuzz testing
+fuzz/artifacts/
+fuzz/corpus/
+fuzz/target/
+
+# Testing
+.tarpaulin-includes
+
+# Local configuration
+config.local.toml
+settings.local.toml
+
+# Database files
+*.db
+*.sqlite
+*.sqlite3
+
+# Audio/signal files (project specific)
+*.wav
+*.mp3
+*.flac
+*.ogg
+*.raw
+*.iq
+*.cfile
+
+# Build system
+compile_commands.json
+.ninja_deps
+.ninja_log
+build/
+
+# Performance analysis
+*.svg
+perf.data*
+*.folded
+
+# Vendor directory (if using vendored dependencies)
+vendor/
+
+# JetBrains IDEs
+.idea/
+*.iml
+*.iws
+out/
+
+# Visual Studio Code
+.vscode/
+!.vscode/settings.json
+!.vscode/tasks.json
+!.vscode/launch.json
+!.vscode/extensions.json
+
+# Sublime Text
+*.sublime-workspace
+*.sublime-project
+
+# Atom
+.atom/
+
+# Eclipse
+.metadata
+.project
+.classpath
+.settings/
+
+# NetBeans
+nbproject/
+nbbuild/
+dist/
+nbdist/
+.nb-gradle/
+
+# CMake
+CMakeFiles/
+CMakeCache.txt
+cmake_install.cmake
+Makefile
+
+# Autotools
+.deps/
+.libs/
+*.la
+*.lo
+aclocal.m4
+autom4te.cache/
+config.guess
+config.h.in
+config.log
+config.status
+config.sub
+configure
+depcomp
+install-sh
+libtool
+ltmain.sh
+missing
+stamp-h1
+
+# pkg-config
+*.pc
+
+# Binaries
+*.bin
+*.exe
+*.dll
+*.so
+*.so.*
+*.dylib
+
+# Archives
+*.a
+*.lib
+*.ar
+
+# Compressed files
+*.zip
+*.tar.gz
+*.tgz
+*.tar.bz2
+*.tbz2
+*.tar.xz
+*.txz
+*.7z
+*.rar
+
+# Package managers
+node_modules/
+bower_components/
+jspm_packages/
+
+# Python (if mixed project)
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+dist/
+build/
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Java (if mixed project)
+*.class
+*.jar
+*.war
+*.ear
+hs_err_pid*
+replay_pid*
+
+# Certificates and keys
+*.pem
+*.key
+*.crt
+*.cer
+*.p12
+*.pfx
+*.jks
+
+# Local development
+docker-compose.override.yml
+.devcontainer/
+.github/workflows/local.yml
+.claude/
+CLAUDE.md

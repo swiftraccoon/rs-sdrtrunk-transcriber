@@ -1,0 +1,49 @@
+version: '3.8'
+
+services:
+  postgres:
+    image: docker.io/postgres:17-alpine
+    container_name: sdrtrunk-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: sdrtrunk
+      POSTGRES_PASSWORD: sdrtrunk_dev_password
+      POSTGRES_DB: sdrtrunk_transcriber
+      POSTGRES_HOST_AUTH_METHOD: md5
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./crates/sdrtrunk-database/migrations:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U sdrtrunk -d sdrtrunk_transcriber"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - sdrtrunk-network
+
+  # Optional: pgAdmin for database management
+  pgadmin:
+    image: docker.io/dpage/pgadmin4:latest
+    container_name: sdrtrunk-pgadmin
+    restart: unless-stopped
+    environment:
+      PGADMIN_DEFAULT_EMAIL: admin@sdrtrunk.local
+      PGADMIN_DEFAULT_PASSWORD: admin_password
+      PGADMIN_CONFIG_SERVER_MODE: 'False'
+      PGADMIN_CONFIG_MASTER_PASSWORD_REQUIRED: 'False'
+    ports:
+      - "5050:80"
+    depends_on:
+      - postgres
+    networks:
+      - sdrtrunk-network
+
+networks:
+  sdrtrunk-network:
+    driver: bridge
+
+volumes:
+  postgres_data:
+    driver: local

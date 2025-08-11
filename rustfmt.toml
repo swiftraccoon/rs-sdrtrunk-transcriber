@@ -1,0 +1,35 @@
+# rustfmt configuration for production Rust code
+# Only stable features to ensure compatibility
+
+edition = "2021"
+hard_tabs = false
+tab_spaces = 4
+newline_style = "Unix"
+max_width = 100
+reorder_imports = true
+reorder_modules = true
+remove_nested_parens = true
+use_small_heuristics = "Default"
+short_array_element_width_threshold = 10
+
+# Unstable options (require nightly rustfmt)
+# Uncomment when using nightly builds
+# unstable_features = true
+# format_generated_files = true
+# skip_children = false
+# hide_parse_errors = false
+# error_on_line_overflow = false
+# error_on_unformatted = false
+# report_todo = "Never"
+# report_fixme = "Never"
+# version = "Two"
+# merge_derives = true
+# use_try_shorthand = false
+# use_field_init_shorthand = false
+# force_explicit_abi = true
+# condense_wildcard_suffixes = false
+# color = "Auto"
+# required_version = "1.7.1"
+# unstable_granularity = "Crate"
+# disable_all_formatting = false
+# skip_macro_invocations = []

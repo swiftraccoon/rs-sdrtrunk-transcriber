@@ -1,0 +1,156 @@
+# Cargo configuration for production Rust development
+# Sets strict compilation flags and optimization settings
+
+[alias]
+# Development aliases for common tasks
+check-all = "check --workspace --all-targets --all-features"
+clippy-all = "clippy --workspace --all-targets --all-features -- -D warnings -D clippy::all -D clippy::pedantic -D clippy::nursery -D clippy::cargo"
+clippy-strict = """clippy --workspace --all-targets --all-features -- \
+    -D warnings \
+    -D clippy::all \
+    -D clippy::pedantic \
+    -D clippy::nursery \
+    -D clippy::cargo \
+    -D clippy::restriction \
+    -A clippy::blanket_clippy_restriction_lints \
+    -A clippy::implicit_return \
+    -A clippy::missing_docs_in_private_items \
+    -A clippy::question_mark_used \
+    -A clippy::single_call_fn \
+    -A clippy::std_instead_of_alloc \
+    -A clippy::std_instead_of_core \
+    -A clippy::shadow_reuse \
+    -A clippy::shadow_same \
+    -A clippy::shadow_unrelated \
+    -A clippy::separated_literal_suffix \
+    -A clippy::mod_module_files"""
+test-all = "test --workspace --all-targets --all-features"
+doc-all = "doc --workspace --all-features --no-deps"
+build-release = "build --workspace --release"
+audit-all = "audit"
+deny-all = "deny check"
+machete-all = "machete"
+nextest-all = "nextest run --workspace --all-features"
+cov = "llvm-cov nextest --workspace --all-features --lcov --output-path lcov.info"
+cov-html = "llvm-cov nextest --workspace --all-features --html"
+
+# Security and quality checks
+security-audit = "audit --deny warnings"
+license-check = "deny check licenses"
+ban-check = "deny check bans"
+advisor-check = "deny check advisories"
+
+# Release preparation
+pre-release = ["check-all", "clippy-strict", "test-all", "doc-all", "audit-all", "deny-all"]
+
+[build]
+# Use all available CPU cores for compilation
+# jobs = 0  # Commented out - causes error on some systems
+
+# Target-specific configuration
+[target.x86_64-unknown-linux-gnu]
+rustflags = [
+    "-C", "target-cpu=native",
+    "-C", "link-arg=-fuse-ld=lld",  # Use LLD linker for faster linking
+]
+
+[target.x86_64-apple-darwin]
+rustflags = [
+    "-C", "target-cpu=native",
+]
+
+[target.aarch64-apple-darwin]
+rustflags = [
+    "-C", "target-cpu=native",
+]
+
+[target.x86_64-pc-windows-msvc]
+rustflags = [
+    "-C", "target-cpu=native",
+    "-C", "link-arg=/DEBUG:NONE",  # Strip debug info from release builds on Windows
+]
+
+# Global rustflags for all targets (development)
+[env]
+RUSTFLAGS = "-D warnings -D rust_2018_idioms -D rust_2021_compatibility"
+
+# Cargo registry configuration
+[registry]
+default = "crates-io"
+
+[registries.crates-io]
+protocol = "sparse"
+
+# Source replacement for faster builds (optional)
+# Uncomment below if you have a vendor directory
+# [source.crates-io]
+# replace-with = "vendored-sources"
+# 
+# [source.vendored-sources]
+# directory = "vendor"
+
+# HTTP configuration
+[http]
+check-revoke = false
+timeout = 30
+# cainfo = "/etc/ssl/certs/ca-certificates.crt"  # Commented out - causes issues
+
+# Network configuration
+[net]
+retry = 3
+git-fetch-with-cli = true
+
+# Profile configurations for different build types
+[profile.dev]
+# Fast compilation for development
+debug = 2
+debug-assertions = true
+overflow-checks = true
+lto = false
+panic = 'unwind'
+incremental = true
+codegen-units = 256
+opt-level = 0
+
+[profile.release]
+# Maximum optimization for production
+debug = false
+debug-assertions = false
+overflow-checks = false
+lto = "fat"          # Full link-time optimization
+panic = 'abort'      # Smaller binaries, faster execution
+incremental = false
+codegen-units = 1    # Better optimization
+opt-level = 3        # Maximum optimization
+strip = true         # Strip symbols for smaller binaries
+
+[profile.test]
+# Optimized test builds
+debug = 2
+debug-assertions = true
+overflow-checks = true
+opt-level = 1        # Some optimization for faster test execution
+
+[profile.bench]
+# Profile for benchmarks
+debug = false
+debug-assertions = false
+overflow-checks = false
+lto = "thin"
+panic = 'abort'
+incremental = false
+codegen-units = 1
+opt-level = 3
+
+# Custom profile for development with some optimization
+[profile.dev-opt]
+inherits = "dev"
+opt-level = 1
+debug-assertions = true
+overflow-checks = true
+
+# Custom profile for release with debug info
+[profile.release-debug]
+inherits = "release"
+debug = 1
+strip = false

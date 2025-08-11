@@ -1,0 +1,91 @@
+[package]
+name = "sdrtrunk-api"
+version.workspace = true
+authors.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+description = "REST API server for SDRTrunk transcriber"
+
+[[bin]]
+name = "sdrtrunk-api-server"
+path = "src/main.rs"
+
+[dependencies]
+# Internal dependencies
+sdrtrunk-core = { path = "../sdrtrunk-core" }
+sdrtrunk-database = { path = "../sdrtrunk-database" }
+
+# Web framework
+axum = { version = "0.7", features = ["macros", "multipart", "ws"] }
+axum-extra = { version = "0.9", features = ["typed-header"] }
+tower = { version = "0.5", features = ["full"] }
+tower-http = { version = "0.6", features = ["fs", "cors", "trace", "compression-gzip", "timeout", "limit"] }
+
+# Async runtime
+tokio = { version = "1.40", features = ["full"] }
+
+# Serialization
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+
+# Validation
+validator = { version = "0.19", features = ["derive"] }
+
+# OpenAPI documentation (commented out to reduce dependencies)
+# utoipa = { version = "4.2", features = ["axum_extras", "chrono", "uuid"] }
+# utoipa-swagger-ui = { version = "7.1", features = ["axum"] }
+
+# Multipart handling
+multer = "3.1"
+
+# Metrics (simplified - could use a lighter solution)
+# prometheus = "0.13"
+
+# Date/time
+chrono = { version = "0.4", features = ["serde"] }
+
+# Utilities
+uuid = { version = "1.11", features = ["v4", "serde"] }
+bytes = "1.8"
+
+# Logging
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
+
+# Error handling (uses sdrtrunk-core custom implementations)
+
+# Environment variables
+dotenvy = "0.15"
+
+# Rate limiting
+governor = "0.7"
+
+# URL encoding for query parameters
+serde_urlencoded = "0.7"
+
+# Random number generation
+rand = "0.8"
+
+# Simple MD5 for API key hashing (in production, use a proper hash)
+md5 = "0.7"
+
+# HTTP status codes and utilities
+http = "1.0"
+
+# Dashboard/map for in-memory storage
+dashmap = "6.1"
+
+# Better panic messages
+better-panic = "0.3"
+
+# Direct access to sqlx types
+sqlx = { version = "0.8", features = ["runtime-tokio", "postgres", "uuid", "chrono", "migrate", "json", "ipnetwork", "rust_decimal"] }
+rust_decimal = { version = "1.36", features = ["serde", "db-postgres"] }
+
+[dev-dependencies]
+reqwest = { version = "0.12", features = ["json", "multipart"] }
+tower = { version = "0.5", features = ["util"] }
+hyper = "1.5"
+pretty_assertions = "1.4"
+tempfile = "3.13"

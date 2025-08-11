@@ -1,0 +1,61 @@
+# Configuration for cargo-nextest
+
+[profile.default]
+# Number of tests to run simultaneously
+test-threads = 4
+
+# Test timeout
+slow-timeout = { period = "60s", terminate-after = 2 }
+leak-timeout = "100ms"
+
+# Retry failed tests
+retries = 2
+
+# Filter out integration tests that require database
+filter = 'not (test(integration_database) and not test(integration_database::test_.*_unit))'
+
+# Test output
+status-level = "retry"
+final-status-level = "flaky"
+
+[profile.ci]
+# CI configuration - more restrictive
+test-threads = 2
+retries = 3
+slow-timeout = { period = "30s", terminate-after = 1 }
+
+# Run all tests in CI
+filter = 'all()'
+
+# More verbose output for CI
+status-level = "all"
+
+[profile.unit]
+# Unit tests only
+filter = 'test(not integration_)'
+test-threads = 8
+retries = 1
+
+[profile.integration]  
+# Integration tests only
+filter = 'test(integration_)'
+test-threads = 1  # Sequential for integration tests
+slow-timeout = { period = "120s", terminate-after = 1 }
+
+[profile.performance]
+# Performance tests
+filter = 'test(performance) or test(bench)'
+test-threads = 1  # No parallelism for consistent benchmarks
+retries = 0  # No retries for performance tests
+
+[profile.database]
+# Database tests only
+filter = 'test(integration_database)'
+test-threads = 1  # Sequential for database tests
+slow-timeout = { period = "300s", terminate-after = 1 }
+
+[profile.minimal]
+# Minimal test run for quick feedback
+filter = 'test(not integration_) and test(not performance) and test(not bench)'
+test-threads = 8
+retries = 0
