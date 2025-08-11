@@ -11,6 +11,7 @@
 
 pub mod config;
 pub mod error;
+pub mod lazy;
 pub mod types;
 pub mod utils;
 
@@ -55,14 +56,16 @@ pub mod context_error {
 
     impl StdError for ContextError {
         fn source(&self) -> Option<&(dyn StdError + 'static)> {
-            self.source.as_ref().map(|e| e.as_ref() as &(dyn StdError + 'static))
+            self.source
+                .as_ref()
+                .map(|e| e.as_ref() as &(dyn StdError + 'static))
         }
     }
 
     /// Result type alias for context errors
     pub type Result<T> = std::result::Result<T, ContextError>;
 
-    /// Create a context error (like anyhow::anyhow!)
+    /// Create a context error (like `anyhow::anyhow`!)
     #[macro_export]
     macro_rules! context_error {
         ($msg:literal) => {
@@ -76,6 +79,10 @@ pub mod context_error {
     /// Extension trait for adding context to results
     pub trait ResultExt<T> {
         /// Add context to an error
+        ///
+        /// # Errors
+        ///
+        /// Returns a `ContextError` if the original result was an error.
         fn with_context<F, S>(self, f: F) -> Result<T>
         where
             F: FnOnce() -> S,
@@ -98,19 +105,19 @@ pub mod context_error {
     // From implementations for common error types
     impl From<std::io::Error> for ContextError {
         fn from(err: std::io::Error) -> Self {
-            ContextError::with_context(err, "I/O operation failed")
+            Self::with_context(err, "I/O operation failed")
         }
     }
 
     impl From<serde_json::Error> for ContextError {
         fn from(err: serde_json::Error) -> Self {
-            ContextError::with_context(err, "JSON serialization failed")
+            Self::with_context(err, "JSON serialization failed")
         }
     }
 
     impl From<config::ConfigError> for ContextError {
         fn from(err: config::ConfigError) -> Self {
-            ContextError::with_context(err, "Configuration error")
+            Self::with_context(err, "Configuration error")
         }
     }
 }
@@ -123,7 +130,7 @@ pub use types::{FileData, RadioCall, SystemId, TalkgroupId};
 /// Initialize the logging system
 ///
 /// # Errors
-/// 
+///
 /// Returns an error if the logging system cannot be initialized.
 pub fn init_logging() -> context_error::Result<()> {
     use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};

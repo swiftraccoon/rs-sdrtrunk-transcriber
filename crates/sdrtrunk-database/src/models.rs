@@ -1,4 +1,4 @@
-//! Database models for SDRTrunk transcriber
+//! Database models for `SDRTrunk` transcriber
 
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};

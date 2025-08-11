@@ -6,7 +6,6 @@ use axum::{
     http::StatusCode,
     response::Json,
 };
-use sdrtrunk_database::queries;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use tracing::{error, info, warn};
@@ -267,17 +266,8 @@ pub async fn get_system_stats(
     info!("Retrieving statistics for system: {}", system_id);
 
     // Get basic system stats from database
-    let system_stats = match queries::get_system_stats(&state.pool, &system_id).await {
-        Ok(Some(stats)) => stats,
-        Ok(None) => {
-            return Err((
-                StatusCode::NOT_FOUND,
-                Json(ErrorResponse {
-                    error: format!("System {} not found", system_id),
-                    code: "SYSTEM_NOT_FOUND".to_string(),
-                }),
-            ));
-        }
+    let system_stats = match sdrtrunk_database::get_system_stats(&state.pool, &system_id).await {
+        Ok(stats) => stats,
         Err(e) => {
             error!("Failed to retrieve system stats: {}", e);
             return Err((
@@ -379,7 +369,7 @@ pub async fn get_global_stats(
     info!("Retrieving global statistics");
 
     // Get total systems count
-    let total_systems = match queries::count_systems(&state.pool).await {
+    let total_systems = match sdrtrunk_database::count_systems(&state.pool).await {
         Ok(count) => count,
         Err(e) => {
             error!("Failed to count systems: {}", e);
@@ -394,7 +384,7 @@ pub async fn get_global_stats(
     };
 
     // Get total calls
-    let total_calls = match queries::count_radio_calls(&state.pool).await {
+    let total_calls = match sdrtrunk_database::count_radio_calls(&state.pool).await {
         Ok(count) => count,
         Err(e) => {
             error!("Failed to count calls: {}", e);
@@ -409,7 +399,7 @@ pub async fn get_global_stats(
     };
 
     // Get calls in last 24 hours
-    let calls_last_24h = match queries::count_recent_calls(&state.pool, 24).await {
+    let calls_last_24h = match sdrtrunk_database::count_recent_calls(&state.pool, 24).await {
         Ok(count) => count,
         Err(e) => {
             warn!("Failed to count recent calls: {}", e);
@@ -418,14 +408,14 @@ pub async fn get_global_stats(
     };
 
     // Get top systems
-    let top_systems = match queries::get_top_systems(&state.pool, 10).await {
+    let top_systems = match sdrtrunk_database::get_top_systems(&state.pool, 10).await {
         Ok(systems) => systems
             .into_iter()
-            .map(|s| SystemSummary {
-                system_id: s.system_id,
-                system_label: s.system_label,
-                call_count: s.total_calls.unwrap_or(0),
-                last_activity: s.last_seen,
+            .map(|(system_id, call_count)| SystemSummary {
+                system_id,
+                system_label: None,
+                call_count: call_count.try_into().unwrap_or(0),
+                last_activity: None,
             })
             .collect(),
         Err(e) => {
@@ -438,7 +428,7 @@ pub async fn get_global_stats(
     let storage_stats = calculate_storage_stats(&state.config.storage.base_dir).await;
 
     let response = GlobalStatsResponse {
-        total_systems,
+        total_systems: total_systems.try_into().unwrap_or(0),
         total_calls,
         calls_last_24h,
         top_systems,
@@ -458,25 +448,23 @@ async fn calculate_additional_metrics(
 ) -> Result<(i32, i32, f64), sdrtrunk_core::Error> {
     // This would be implemented with proper SQL queries
     // For now, returning placeholder values
-    let calls_last_24h = queries::count_system_calls_since(
-        pool,
-        system_id,
-        chrono::Utc::now() - chrono::Duration::hours(24),
-    )
-    .await
-    .unwrap_or(0);
+    let calls_last_24h = sdrtrunk_database::count_system_calls_since(pool, system_id, 24)
+        .await
+        .unwrap_or(0);
 
-    let calls_last_7d = queries::count_system_calls_since(
-        pool,
-        system_id,
-        chrono::Utc::now() - chrono::Duration::days(7),
+    let calls_last_7d = sdrtrunk_database::count_system_calls_since(
+        pool, system_id, 168, // 7 days * 24 hours
     )
     .await
     .unwrap_or(0);
 
     let avg_calls_per_day = calls_last_7d as f64 / 7.0;
 
-    Ok((calls_last_24h, calls_last_7d, avg_calls_per_day))
+    Ok((
+        calls_last_24h.try_into().unwrap_or(0),
+        calls_last_7d.try_into().unwrap_or(0),
+        avg_calls_per_day,
+    ))
 }
 
 /// Determine activity status based on call counts

@@ -1,6 +1,6 @@
 //! Application state management
 
-use sdrtrunk_core::{context_error::Result, context_error, Config};
+use sdrtrunk_core::{Config, context_error, context_error::Result};
 use sdrtrunk_database::PgPool;
 use std::path::PathBuf;
 

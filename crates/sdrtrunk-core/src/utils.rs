@@ -93,9 +93,11 @@ pub fn create_date_path(base: &Path, date: &chrono::DateTime<chrono::Utc>) -> st
 /// Validate system ID format
 #[must_use]
 pub fn validate_system_id(system_id: &str) -> bool {
-    !system_id.is_empty() 
-        && system_id.len() <= 50 
-        && system_id.chars().all(|c| c.is_alphanumeric() || c == '_' || c == '-')
+    !system_id.is_empty()
+        && system_id.len() <= 50
+        && system_id
+            .chars()
+            .all(|c| c.is_alphanumeric() || c == '_' || c == '-')
 }
 
 /// Sanitize filename for safe storage
@@ -117,10 +119,11 @@ pub fn sanitize_filename(filename: &str) -> String {
 }
 
 /// Calculate file checksum (MD5 for simplicity)
+#[must_use]
 pub fn calculate_file_checksum(data: &[u8]) -> String {
     use std::collections::hash_map::DefaultHasher;
     use std::hash::{Hash, Hasher};
-    
+
     let mut hasher = DefaultHasher::new();
     data.hash(&mut hasher);
     format!("{:x}", hasher.finish())
@@ -129,11 +132,12 @@ pub fn calculate_file_checksum(data: &[u8]) -> String {
 /// Format duration in seconds to human readable format
 #[must_use]
 pub fn format_duration(seconds: f64) -> String {
+    #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
     let total_seconds = seconds.round() as u64;
     let hours = total_seconds / 3600;
     let minutes = (total_seconds % 3600) / 60;
     let secs = total_seconds % 60;
-    
+
     if hours > 0 {
         format!("{hours:02}:{minutes:02}:{secs:02}")
     } else {
@@ -142,28 +146,37 @@ pub fn format_duration(seconds: f64) -> String {
 }
 
 /// Parse duration string back to seconds
+///
+/// # Errors
+///
+/// Returns an error if the duration string is not in MM:SS or HH:MM:SS format.
 pub fn parse_duration(duration_str: &str) -> Result<f64> {
     let parts: Vec<&str> = duration_str.split(':').collect();
-    
+
     match parts.len() {
         2 => {
             // MM:SS format
-            let minutes: f64 = parts[0].parse()
+            let minutes: f64 = parts[0]
+                .parse()
                 .map_err(|_| crate::Error::Other("Invalid duration format".to_string()))?;
-            let seconds: f64 = parts[1].parse()
+            let seconds: f64 = parts[1]
+                .parse()
                 .map_err(|_| crate::Error::Other("Invalid duration format".to_string()))?;
-            Ok(minutes * 60.0 + seconds)
-        },
+            Ok(minutes.mul_add(60.0, seconds))
+        }
         3 => {
             // HH:MM:SS format
-            let hours: f64 = parts[0].parse()
+            let hours: f64 = parts[0]
+                .parse()
                 .map_err(|_| crate::Error::Other("Invalid duration format".to_string()))?;
-            let minutes: f64 = parts[1].parse()
+            let minutes: f64 = parts[1]
+                .parse()
                 .map_err(|_| crate::Error::Other("Invalid duration format".to_string()))?;
-            let seconds: f64 = parts[2].parse()
+            let seconds: f64 = parts[2]
+                .parse()
                 .map_err(|_| crate::Error::Other("Invalid duration format".to_string()))?;
-            Ok(hours * 3600.0 + minutes * 60.0 + seconds)
-        },
+            Ok(hours.mul_add(3600.0, minutes.mul_add(60.0, seconds)))
+        }
         _ => Err(crate::Error::Other("Invalid duration format".to_string())),
     }
 }
@@ -171,6 +184,7 @@ pub fn parse_duration(duration_str: &str) -> Result<f64> {
 /// Convert frequency to human readable format
 #[must_use]
 pub fn format_frequency(frequency_hz: i64) -> String {
+    #[allow(clippy::cast_precision_loss)]
     if frequency_hz >= 1_000_000_000 {
         format!("{:.3} GHz", frequency_hz as f64 / 1_000_000_000.0)
     } else if frequency_hz >= 1_000_000 {
@@ -183,6 +197,13 @@ pub fn format_frequency(frequency_hz: i64) -> String {
 }
 
 #[cfg(test)]
+#[allow(
+    clippy::missing_panics_doc,
+    clippy::unreadable_literal,
+    clippy::float_cmp,
+    clippy::case_sensitive_file_extension_comparisons,
+    clippy::uninlined_format_args
+)]
 mod tests {
     use super::*;
     use chrono::TimeZone;
@@ -205,7 +226,11 @@ mod tests {
         let test_cases = vec![
             ("20240101_120000_Metro_TG123_FROM_456.mp3", 123, 456),
             ("20231225_235959_FireDept_TG999_FROM_12345.wav", 999, 12345),
-            ("20240630_180000_EMS_Services_TG5555_FROM_987654.flac", 5555, 987654),
+            (
+                "20240630_180000_EMS_Services_TG5555_FROM_987654.flac",
+                5555,
+                987654,
+            ),
         ];
 
         for (filename, expected_tg, expected_radio) in test_cases {
@@ -220,7 +245,7 @@ mod tests {
     fn test_parse_sdrtrunk_filename_errors() {
         let invalid_cases = vec![
             "invalid.mp3",
-            "too_few_parts.mp3", 
+            "too_few_parts.mp3",
             "20240315.mp3",
             "",
             "no_extension",
@@ -235,11 +260,7 @@ mod tests {
 
     #[test]
     fn test_validate_file_extension() {
-        let allowed_extensions = vec![
-            "mp3".to_string(),
-            "wav".to_string(),
-            "flac".to_string(),
-        ];
+        let allowed_extensions = vec!["mp3".to_string(), "wav".to_string(), "flac".to_string()];
 
         // Valid extensions
         assert!(validate_file_extension("test.mp3", &allowed_extensions));
@@ -248,7 +269,10 @@ mod tests {
         assert!(validate_file_extension("test.WAV", &allowed_extensions));
         assert!(validate_file_extension("test.flac", &allowed_extensions));
         assert!(validate_file_extension("test.FLAC", &allowed_extensions));
-        assert!(validate_file_extension("path/to/test.mp3", &allowed_extensions));
+        assert!(validate_file_extension(
+            "path/to/test.mp3",
+            &allowed_extensions
+        ));
 
         // Invalid extensions
         assert!(!validate_file_extension("test.aac", &allowed_extensions));
@@ -262,24 +286,24 @@ mod tests {
     fn test_generate_storage_filename() {
         let test_cases = vec![
             "original.mp3",
-            "test.wav", 
+            "test.wav",
             "audio.flac",
             "file_without_extension",
         ];
 
         for original in test_cases {
             let generated = generate_storage_filename(original);
-            
+
             // Should be UUID format with extension
             assert!(generated.len() > 10);
-            
+
             if original.contains('.') {
                 let expected_ext = original.split('.').last().unwrap();
                 assert!(generated.ends_with(&format!(".{expected_ext}")));
             } else {
                 assert!(generated.ends_with(".mp3")); // Default extension
             }
-            
+
             // Should be unique
             let generated2 = generate_storage_filename(original);
             assert_ne!(generated, generated2);
@@ -292,15 +316,13 @@ mod tests {
         let date = chrono::Utc
             .with_ymd_and_hms(2024, 3, 15, 14, 25, 30)
             .unwrap();
-        
+
         let path = create_date_path(&base, &date);
         assert_eq!(path, std::path::PathBuf::from("/data/2024/03/15"));
-        
+
         // Test with different dates
-        let new_year = chrono::Utc
-            .with_ymd_and_hms(2025, 1, 1, 0, 0, 0)
-            .unwrap();
-        
+        let new_year = chrono::Utc.with_ymd_and_hms(2025, 1, 1, 0, 0, 0).unwrap();
+
         let path2 = create_date_path(&base, &new_year);
         assert_eq!(path2, std::path::PathBuf::from("/data/2025/01/01"));
     }
@@ -324,10 +346,19 @@ mod tests {
 
     #[test]
     fn test_sanitize_filename() {
-        assert_eq!(sanitize_filename("valid_filename.mp3"), "valid_filename.mp3");
-        assert_eq!(sanitize_filename("file with spaces.mp3"), "file_with_spaces.mp3");
+        assert_eq!(
+            sanitize_filename("valid_filename.mp3"),
+            "valid_filename.mp3"
+        );
+        assert_eq!(
+            sanitize_filename("file with spaces.mp3"),
+            "file_with_spaces.mp3"
+        );
         assert_eq!(sanitize_filename("file@#$%^&*().mp3"), "file_________.mp3");
-        assert_eq!(sanitize_filename("file/path\\name.mp3"), "file_path_name.mp3");
+        assert_eq!(
+            sanitize_filename("file/path\\name.mp3"),
+            "file_path_name.mp3"
+        );
         assert_eq!(sanitize_filename("___file___.mp3"), "file___.mp3");
         assert_eq!(sanitize_filename("file-name_123.mp3"), "file-name_123.mp3");
     }
@@ -337,11 +368,11 @@ mod tests {
         let data1 = b"test data";
         let data2 = b"different data";
         let data3 = b"test data"; // Same as data1
-        
+
         let checksum1 = calculate_file_checksum(data1);
         let checksum2 = calculate_file_checksum(data2);
         let checksum3 = calculate_file_checksum(data3);
-        
+
         assert_ne!(checksum1, checksum2);
         assert_eq!(checksum1, checksum3);
         assert!(checksum1.chars().all(|c| c.is_ascii_hexdigit()));
@@ -362,7 +393,7 @@ mod tests {
         assert_eq!(parse_duration("01:30").unwrap(), 90.0);
         assert_eq!(parse_duration("01:01:01").unwrap(), 3661.0);
         assert_eq!(parse_duration("00:00").unwrap(), 0.0);
-        
+
         // Error cases
         assert!(parse_duration("invalid").is_err());
         assert!(parse_duration("1:2:3:4").is_err());
@@ -383,7 +414,7 @@ mod tests {
     #[test]
     fn test_duration_roundtrip() {
         let test_durations = vec![0.0, 30.0, 90.0, 3661.0, 3599.5];
-        
+
         for duration in test_durations {
             let formatted = format_duration(duration);
             let parsed = parse_duration(&formatted).unwrap();
@@ -422,7 +453,7 @@ mod tests {
         fn test_frequency_formatting_properties(frequency in 1i64..10_000_000_000i64) {
             let formatted = format_frequency(frequency);
             prop_assert!(!formatted.is_empty());
-            prop_assert!(formatted.contains("Hz") || formatted.contains("kHz") || 
+            prop_assert!(formatted.contains("Hz") || formatted.contains("kHz") ||
                         formatted.contains("MHz") || formatted.contains("GHz"));
         }
 
@@ -439,16 +470,16 @@ mod tests {
         // Test with very small numbers
         assert_eq!(format_frequency(1), "1 Hz");
         assert_eq!(format_duration(0.1), "00:00");
-        
+
         // Test with very large numbers
         assert_eq!(format_frequency(999_999_999_999), "1000.000 GHz");
         assert_eq!(format_duration(359999.0), "99:59:59");
-        
+
         // Test empty and edge case strings
         assert!(!validate_system_id(""));
         assert_eq!(sanitize_filename(""), "");
         assert_eq!(sanitize_filename("..."), "..."); // Dots are kept
-        
+
         // Test unicode handling (Unicode alphanumeric chars are kept)
         assert_eq!(sanitize_filename("café.mp3"), "café.mp3");
         assert_eq!(sanitize_filename("файл.mp3"), "файл.mp3");
@@ -461,12 +492,12 @@ mod tests {
         let result = parse_sdrtrunk_filename(minimal).unwrap();
         assert_eq!(result.talkgroup_id, 1);
         assert_eq!(result.radio_id, 1);
-        
+
         // Test with no TG prefix
         let no_tg = "20240101_000000_System_123_FROM_456.mp3";
         let result = parse_sdrtrunk_filename(no_tg).unwrap();
         assert_eq!(result.talkgroup_id, 0); // Should default to 0
-        
+
         // Test with no radio ID (but still has FROM)
         let no_radio = "20240101_000000_System_TG123_FROM_.mp3";
         let result = parse_sdrtrunk_filename(no_radio).unwrap();

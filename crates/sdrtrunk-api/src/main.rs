@@ -1,7 +1,7 @@
 //! Main entry point for the SDRTrunk API server
 
 use sdrtrunk_api::build_router;
-use sdrtrunk_core::{Config, init_logging, context_error::Result, context_error};
+use sdrtrunk_core::{Config, context_error, context_error::Result, init_logging};
 use sdrtrunk_database::Database;
 use std::net::SocketAddr;
 use tokio::net::TcpListener;
@@ -11,6 +11,12 @@ use tracing::{error, info};
 
 #[tokio::main]
 async fn main() -> Result<()> {
+    // Load .env file if it exists (for development convenience)
+    if let Err(e) = dotenvy::dotenv() {
+        // It's okay if .env doesn't exist, just log it at debug level
+        eprintln!("Note: .env file not loaded: {}", e);
+    }
+
     // Initialize logging first
     init_logging()?;
 

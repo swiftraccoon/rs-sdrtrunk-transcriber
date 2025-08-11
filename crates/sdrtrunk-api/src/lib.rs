@@ -8,9 +8,9 @@ pub mod state;
 
 pub use state::AppState;
 
-use sdrtrunk_core::context_error::Result;
 use axum::Router;
 use sdrtrunk_core::Config;
+use sdrtrunk_core::context_error::Result;
 use sdrtrunk_database::PgPool;
 use std::sync::Arc;
 

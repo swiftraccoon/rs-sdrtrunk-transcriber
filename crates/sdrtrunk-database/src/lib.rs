@@ -12,6 +12,14 @@
 pub mod models;
 pub mod queries;
 
+// Re-export convenience functions
+pub use queries::{
+    RadioCallFilter, UploadLogParams, count_radio_calls, count_radio_calls_filtered,
+    count_recent_calls, count_system_calls_since, count_systems, get_radio_call, get_system_stats,
+    get_top_systems, insert_radio_call, insert_upload_log, list_radio_calls_filtered,
+    update_system_stats, validate_api_key,
+};
+
 use sdrtrunk_core::{Config, Error, Result};
 use sqlx::postgres::PgPoolOptions;
 

@@ -166,6 +166,12 @@ enum QueueCommands {
 
 #[tokio::main]
 async fn main() -> Result<()> {
+    // Load .env file if it exists (for development convenience)
+    if let Err(e) = dotenvy::dotenv() {
+        // It's okay if .env doesn't exist
+        eprintln!("Note: .env file not loaded: {}", e);
+    }
+    
     let cli = Cli::parse();
 
     // Initialize logging

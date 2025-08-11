@@ -321,7 +321,7 @@ pub struct ProcessingResult {
 }
 
 /// Pagination information for API responses
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct PaginationInfo {
     /// Current page number (1-based)
     pub page: u32,
@@ -444,6 +444,14 @@ impl ErrorResponse {
 }
 
 #[cfg(test)]
+#[allow(
+    clippy::unreadable_literal,
+    clippy::missing_panics_doc,
+    clippy::field_reassign_with_default,
+    clippy::float_cmp,
+    clippy::uninlined_format_args,
+    clippy::match_same_arms
+)]
 mod tests {
     use super::*;
     use chrono::{TimeZone, Utc};
@@ -471,7 +479,7 @@ mod tests {
         let status = TranscriptionStatus::Completed;
         let serialized = serde_json::to_string(&status).unwrap();
         assert_eq!(serialized, "\"completed\"");
-        
+
         let deserialized: TranscriptionStatus = serde_json::from_str(&serialized).unwrap();
         assert_eq!(deserialized, TranscriptionStatus::Completed);
     }
@@ -490,7 +498,7 @@ mod tests {
         let mut call = RadioCall::default();
         call.system_id = "test_system".to_string();
         call.system_label = Some("Test System".to_string());
-        
+
         assert!(call.validate().is_ok());
     }
 
@@ -498,7 +506,7 @@ mod tests {
     fn test_radio_call_validation_system_id_too_long() {
         let mut call = RadioCall::default();
         call.system_id = "a".repeat(51); // Exceeds 50 character limit
-        
+
         let result = call.validate();
         assert!(result.is_err());
         let errors = result.unwrap_err();
@@ -508,7 +516,7 @@ mod tests {
     #[test]
     fn test_radio_call_validation_system_id_empty() {
         let call = RadioCall::default(); // system_id is empty string
-        
+
         let result = call.validate();
         assert!(result.is_err());
         let errors = result.unwrap_err();
@@ -520,7 +528,7 @@ mod tests {
         let mut call = RadioCall::default();
         call.system_id = "valid_system".to_string();
         call.system_label = Some("a".repeat(256)); // Exceeds 255 character limit
-        
+
         let result = call.validate();
         assert!(result.is_err());
         let errors = result.unwrap_err();
@@ -535,10 +543,10 @@ mod tests {
         call.frequency = Some(854_000_000);
         call.transcription_status = TranscriptionStatus::Completed;
         call.transcription_text = Some("Test transcription".to_string());
-        
+
         let serialized = serde_json::to_string(&call).unwrap();
         let deserialized: RadioCall = serde_json::from_str(&serialized).unwrap();
-        
+
         assert_eq!(deserialized.system_id, call.system_id);
         assert_eq!(deserialized.talkgroup_id, call.talkgroup_id);
         assert_eq!(deserialized.frequency, call.frequency);
@@ -559,7 +567,7 @@ mod tests {
             filename: "test.mp3".to_string(),
             filepath: "/path/to/test.mp3".to_string(),
         };
-        
+
         assert_eq!(file_data.date, "20240315");
         assert_eq!(file_data.talkgroup_id, 52197);
         assert_eq!(file_data.radio_id, 1234567);
@@ -571,23 +579,23 @@ mod tests {
         let processing = UploadStatus::Processing;
         let completed = UploadStatus::Completed;
         let failed = UploadStatus::Failed("Error message".to_string());
-        
+
         // Test that all variants can be created and match expected patterns
         match pending {
             UploadStatus::Pending => {}
             _ => panic!("Expected Pending variant"),
         }
-        
+
         match processing {
             UploadStatus::Processing => {}
             _ => panic!("Expected Processing variant"),
         }
-        
+
         match completed {
             UploadStatus::Completed => {}
             _ => panic!("Expected Completed variant"),
         }
-        
+
         match failed {
             UploadStatus::Failed(msg) => assert_eq!(msg, "Error message"),
             _ => panic!("Expected Failed variant"),
@@ -607,7 +615,7 @@ mod tests {
             allowed_systems: vec!["system1".to_string(), "system2".to_string()],
             active: true,
         };
-        
+
         assert_eq!(api_key.id, "test_key_123");
         assert_eq!(api_key.allowed_ips.len(), 2);
         assert_eq!(api_key.allowed_systems.len(), 2);
@@ -631,7 +639,7 @@ mod tests {
             ])),
             last_updated: now,
         };
-        
+
         assert_eq!(stats.system_id, "test_system");
         assert_eq!(stats.total_calls, 1000);
         assert_eq!(stats.calls_today, 50);
@@ -649,7 +657,7 @@ mod tests {
             duration_seconds: 30.5,
             file_size: 1024000,
         };
-        
+
         assert_eq!(audio_info.format, "mp3");
         assert_eq!(audio_info.sample_rate, 44100);
         assert_eq!(audio_info.channels, 2);
@@ -668,7 +676,7 @@ mod tests {
             duration_seconds: 30.5,
             file_size: 1024000,
         };
-        
+
         let result = ProcessingResult {
             success: true,
             error: None,
@@ -676,7 +684,7 @@ mod tests {
             processing_time_ms: 1500,
             checksum: Some("abc123".to_string()),
         };
-        
+
         assert!(result.success);
         assert!(result.error.is_none());
         assert!(result.audio_info.is_some());
@@ -693,7 +701,7 @@ mod tests {
             processing_time_ms: 500,
             checksum: None,
         };
-        
+
         assert!(!result.success);
         assert_eq!(result.error, Some("Failed to process audio".to_string()));
         assert!(result.audio_info.is_none());
@@ -710,7 +718,7 @@ mod tests {
             has_next: true,
             has_prev: true,
         };
-        
+
         assert_eq!(pagination.page, 2);
         assert_eq!(pagination.per_page, 10);
         assert_eq!(pagination.total_count, 95);
@@ -723,7 +731,7 @@ mod tests {
     fn test_api_response_success() {
         let data = vec!["item1", "item2", "item3"];
         let response = ApiResponse::success(data.clone());
-        
+
         assert_eq!(response.data, data);
         assert!(response.success);
         assert!(response.message.is_none());
@@ -735,7 +743,7 @@ mod tests {
         let data = "test data";
         let message = "Operation completed successfully";
         let response = ApiResponse::success_with_message(data, message);
-        
+
         assert_eq!(response.data, data);
         assert!(response.success);
         assert_eq!(response.message, Some(message.to_string()));
@@ -752,9 +760,9 @@ mod tests {
             has_next: true,
             has_prev: false,
         };
-        
+
         let response = ApiResponse::paginated(data.clone(), pagination.clone());
-        
+
         assert_eq!(response.data, data);
         assert!(response.success);
         assert!(response.message.is_none());
@@ -766,7 +774,7 @@ mod tests {
         let error = "Something went wrong";
         let code = "INTERNAL_ERROR";
         let response = ErrorResponse::new(error, code);
-        
+
         assert_eq!(response.error, error);
         assert_eq!(response.code, code);
         assert!(!response.success);
@@ -779,7 +787,7 @@ mod tests {
         let code = "VALIDATION_ERROR";
         let details = json!({"field": "system_id", "message": "Required"});
         let response = ErrorResponse::with_details(error, code, details.clone());
-        
+
         assert_eq!(response.error, error);
         assert_eq!(response.code, code);
         assert!(!response.success);
@@ -794,14 +802,14 @@ mod tests {
             call.system_id = system_id;
             prop_assert!(call.validate().is_ok());
         }
-        
+
         #[test]
         fn test_radio_call_system_id_too_long_validation(system_id in "\\PC{51,100}") {
             let mut call = RadioCall::default();
             call.system_id = system_id;
             prop_assert!(call.validate().is_err());
         }
-        
+
         #[test]
         fn test_transcription_status_roundtrip(status in prop_oneof![
             Just(TranscriptionStatus::None),
@@ -814,7 +822,7 @@ mod tests {
             let deserialized: TranscriptionStatus = serde_json::from_str(&serialized).unwrap();
             prop_assert_eq!(status, deserialized);
         }
-        
+
         #[test]
         fn test_talkgroup_id_range(talkgroup_id in 1i32..=999999i32) {
             let file_data = FileData {
@@ -840,18 +848,18 @@ mod tests {
             UploadStatus::Completed,
             UploadStatus::Failed("Test error".to_string()),
         ];
-        
+
         for status in statuses {
             let serialized = serde_json::to_string(&status).unwrap();
             let deserialized: UploadStatus = serde_json::from_str(&serialized).unwrap();
-            
+
             match (&status, &deserialized) {
-                (UploadStatus::Pending, UploadStatus::Pending) => {},
-                (UploadStatus::Processing, UploadStatus::Processing) => {},
-                (UploadStatus::Completed, UploadStatus::Completed) => {},
+                (UploadStatus::Pending, UploadStatus::Pending) => {}
+                (UploadStatus::Processing, UploadStatus::Processing) => {}
+                (UploadStatus::Completed, UploadStatus::Completed) => {}
                 (UploadStatus::Failed(orig), UploadStatus::Failed(deser)) => {
                     assert_eq!(orig, deser);
-                },
+                }
                 _ => panic!("Serialization roundtrip failed"),
             }
         }
@@ -861,10 +869,10 @@ mod tests {
     fn test_api_response_serialization() {
         let data = vec!["test1", "test2"];
         let response = ApiResponse::success_with_message(data.clone(), "Test message");
-        
+
         let serialized = serde_json::to_string(&response).unwrap();
         let deserialized: ApiResponse<Vec<String>> = serde_json::from_str(&serialized).unwrap();
-        
+
         assert_eq!(deserialized.data, data);
         assert_eq!(deserialized.success, response.success);
         assert_eq!(deserialized.message, response.message);
@@ -886,10 +894,10 @@ mod tests {
             "site_name": "Main Site",
             "antennas": ["North", "South", "East", "West"]
         }));
-        
+
         let serialized = serde_json::to_string(&call).unwrap();
         let deserialized: RadioCall = serde_json::from_str(&serialized).unwrap();
-        
+
         assert_eq!(deserialized.patches, call.patches);
         assert_eq!(deserialized.frequencies, call.frequencies);
         assert_eq!(deserialized.sources, call.sources);
@@ -903,10 +911,10 @@ mod tests {
         call.call_timestamp = timestamp;
         call.created_at = timestamp;
         call.upload_timestamp = timestamp;
-        
+
         let serialized = serde_json::to_string(&call).unwrap();
         let deserialized: RadioCall = serde_json::from_str(&serialized).unwrap();
-        
+
         assert_eq!(deserialized.call_timestamp, timestamp);
         assert_eq!(deserialized.created_at, timestamp);
         assert_eq!(deserialized.upload_timestamp, timestamp);

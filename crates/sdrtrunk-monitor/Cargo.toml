@@ -55,6 +55,9 @@ directories = { workspace = true }
 # CLI (for standalone binary)
 clap = { workspace = true }
 
+# Environment variables
+dotenvy = "0.15"
+
 # Async utilities
 async-recursion = "1.1"
 num_cpus = "1.16"

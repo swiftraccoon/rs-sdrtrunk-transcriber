@@ -9,7 +9,6 @@ use axum::{
 };
 use chrono::{DateTime, Utc};
 use sdrtrunk_core::types::RadioCall;
-use sdrtrunk_database::queries;
 use serde_json;
 use std::{net::SocketAddr, sync::Arc};
 use tracing::{error, info, warn};
@@ -225,7 +224,7 @@ pub async fn handle_call_upload(
     }
 
     // Handle test requests first - they don't require audio files
-    if let Some(_) = metadata.test {
+    if metadata.test.is_some() {
         info!("Test request from system {:?}", metadata.system_id);
 
         let message = "incomplete call data: no talkgroup";
@@ -305,7 +304,7 @@ pub async fn handle_call_upload(
             // Simple hash for API key (in production, use proper hashing)
             let key_hash = format!("{:x}", md5::compute(key));
 
-            match queries::validate_api_key(&state.pool, &key_hash).await {
+            match sdrtrunk_database::validate_api_key(&state.pool, &key_hash).await {
                 Ok(Some(api_key)) => {
                     let api_key_uuid = api_key.id;
                     api_key_id = Some(api_key_uuid.clone());
@@ -470,7 +469,7 @@ pub async fn handle_call_upload(
     };
 
     // Save to database
-    let call_id = match queries::insert_radio_call(&state.pool, &radio_call).await {
+    let call_id = match sdrtrunk_database::insert_radio_call(&state.pool, &radio_call).await {
         Ok(id) => id,
         Err(e) => {
             error!("Failed to save radio call to database: {}", e);
@@ -491,25 +490,23 @@ pub async fn handle_call_upload(
 
     // Update system statistics (non-critical, log errors but don't fail)
     if let Err(e) =
-        queries::update_system_stats(&state.pool, &system_id, metadata.system_label).await
+        sdrtrunk_database::update_system_stats(&state.pool, &system_id, metadata.system_label).await
     {
         warn!("Failed to update system stats: {}", e);
     }
 
     // Log successful upload (non-critical)
-    if let Err(e) = queries::insert_upload_log(
-        &state.pool,
+    let params = sdrtrunk_database::UploadLogParams {
         client_ip,
         user_agent,
-        metadata.api_key,
-        Some(system_id.clone()),
-        true,
-        None,
-        Some(unique_filename),
-        Some(audio.len() as i64),
-    )
-    .await
-    {
+        api_key_id: metadata.api_key,
+        system_id: Some(system_id.clone()),
+        success: true,
+        error_message: None,
+        filename: Some(unique_filename),
+        file_size: Some(audio.len() as i64),
+    };
+    if let Err(e) = sdrtrunk_database::insert_upload_log(&state.pool, params).await {
         warn!("Failed to log upload: {}", e);
     }
 
@@ -547,6 +544,7 @@ pub async fn handle_call_upload(
 }
 
 /// Helper function to handle upload errors with proper logging
+#[allow(clippy::too_many_arguments)]
 async fn upload_error(
     state: &Arc<AppState>,
     client_ip: std::net::IpAddr,
@@ -558,19 +556,17 @@ async fn upload_error(
     error!("Upload error: {}", error_message);
 
     // Log failed upload (best effort - don't fail if logging fails)
-    if let Err(e) = queries::insert_upload_log(
-        &state.pool,
+    let params = sdrtrunk_database::UploadLogParams {
         client_ip,
         user_agent,
-        api_key,
+        api_key_id: api_key,
         system_id,
-        false,
-        Some(error_message.to_string()),
-        None,
-        None,
-    )
-    .await
-    {
+        success: false,
+        error_message: Some(error_message.to_string()),
+        filename: None,
+        file_size: None,
+    };
+    if let Err(e) = sdrtrunk_database::insert_upload_log(&state.pool, params).await {
         warn!("Failed to log upload error: {}", e);
     }
 

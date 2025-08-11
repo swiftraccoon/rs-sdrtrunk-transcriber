@@ -154,16 +154,24 @@ impl fmt::Display for MonitorError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             MonitorError::Watcher { message } => write!(f, "File system watcher error: {message}"),
-            MonitorError::Processing { path, message } => write!(f, "File processing error for {}: {message}", path.display()),
+            MonitorError::Processing { path, message } => {
+                write!(f, "File processing error for {}: {message}", path.display())
+            }
             MonitorError::Database(err) => write!(f, "Database error: {err}"),
             MonitorError::Io(err) => write!(f, "I/O error: {err}"),
             MonitorError::Configuration { message } => write!(f, "Configuration error: {message}"),
             MonitorError::Queue { message } => write!(f, "Queue error: {message}"),
             MonitorError::ServiceNotRunning => write!(f, "Monitor service is not running"),
             MonitorError::ServiceAlreadyRunning => write!(f, "Monitor service is already running"),
-            MonitorError::InvalidFile { path, reason } => write!(f, "Invalid file format for {}: {reason}", path.display()),
-            MonitorError::FileAlreadyProcessed { path } => write!(f, "File already processed: {}", path.display()),
-            MonitorError::Archive { path, message } => write!(f, "Archive error for {}: {message}", path.display()),
+            MonitorError::InvalidFile { path, reason } => {
+                write!(f, "Invalid file format for {}: {reason}", path.display())
+            }
+            MonitorError::FileAlreadyProcessed { path } => {
+                write!(f, "File already processed: {}", path.display())
+            }
+            MonitorError::Archive { path, message } => {
+                write!(f, "Archive error for {}: {message}", path.display())
+            }
             MonitorError::Timeout { operation } => write!(f, "Operation timed out: {operation}"),
             MonitorError::Shutdown { message } => write!(f, "Shutdown error: {message}"),
         }

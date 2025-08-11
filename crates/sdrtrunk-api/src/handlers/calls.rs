@@ -6,7 +6,6 @@ use axum::{
     http::StatusCode,
     response::Json,
 };
-use sdrtrunk_database::queries;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use tracing::{error, info, warn};
@@ -210,18 +209,15 @@ pub async fn list_calls(
     );
 
     // Build query with filters
-    let calls = match queries::list_radio_calls_filtered(
-        &state.pool,
+    let filter = sdrtrunk_database::RadioCallFilter {
+        system_id: query.system_id.as_deref(),
+        talkgroup_id: query.talkgroup_id,
+        from_date: query.from_date,
+        to_date: query.to_date,
         limit,
         offset,
-        query.system_id.as_deref(),
-        query.talkgroup_id,
-        query.from_date,
-        query.to_date,
-        query.sort.as_deref().unwrap_or("desc"),
-    )
-    .await
-    {
+    };
+    let calls = match sdrtrunk_database::list_radio_calls_filtered(&state.pool, filter).await {
         Ok(calls) => calls,
         Err(e) => {
             error!("Failed to list calls: {}", e);
@@ -237,15 +233,15 @@ pub async fn list_calls(
     };
 
     // Get total count for pagination
-    let total = match queries::count_radio_calls_filtered(
-        &state.pool,
-        query.system_id.as_deref(),
-        query.talkgroup_id,
-        query.from_date,
-        query.to_date,
-    )
-    .await
-    {
+    let filter = sdrtrunk_database::RadioCallFilter {
+        system_id: query.system_id.as_deref(),
+        talkgroup_id: query.talkgroup_id,
+        from_date: query.from_date,
+        to_date: query.to_date,
+        limit: 0,  // Not used for count
+        offset: 0, // Not used for count
+    };
+    let total = match sdrtrunk_database::count_radio_calls_filtered(&state.pool, filter).await {
         Ok(count) => count,
         Err(e) => {
             warn!("Failed to get total count: {}", e);
@@ -318,7 +314,7 @@ pub async fn get_call(
 ) -> Result<Json<CallDetail>, (StatusCode, Json<ErrorResponse>)> {
     info!("Retrieving call: {}", call_id);
 
-    let call = match queries::get_radio_call(&state.pool, call_id).await {
+    let call = match sdrtrunk_database::get_radio_call(&state.pool, call_id).await {
         Ok(Some(call)) => call,
         Ok(None) => {
             info!("Call not found: {}", call_id);
@@ -397,7 +393,7 @@ pub async fn get_call_audio(
     info!("Retrieving audio for call: {}", call_id);
 
     // First, get the call to find the audio file path
-    let call = match queries::get_radio_call(&state.pool, call_id).await {
+    let call = match sdrtrunk_database::get_radio_call(&state.pool, call_id).await {
         Ok(Some(call)) => call,
         Ok(None) => {
             return Err((

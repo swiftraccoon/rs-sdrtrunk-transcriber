@@ -348,6 +348,13 @@ impl Default for Config {
 }
 
 #[cfg(test)]
+#[allow(
+    clippy::unreadable_literal,
+    clippy::missing_panics_doc,
+    clippy::field_reassign_with_default,
+    clippy::absurd_extreme_comparisons,
+    clippy::uninlined_format_args
+)]
 mod tests {
     use super::*;
     use pretty_assertions::assert_eq;
@@ -356,37 +363,40 @@ mod tests {
     #[test]
     fn test_config_default() {
         let config = Config::default();
-        
+
         assert_eq!(config.server.host, "0.0.0.0");
         assert_eq!(config.server.port, 8080);
         assert!(config.server.workers > 0);
-        
+
         assert!(config.database.url.contains("postgresql"));
         assert_eq!(config.database.max_connections, 50);
         assert_eq!(config.database.min_connections, 5);
-        
+
         assert_eq!(config.redis.url, "redis://localhost");
         assert_eq!(config.redis.pool_size, 20);
-        
+
         assert_eq!(config.storage.upload_dir, "uploads");
         assert_eq!(config.storage.max_file_size, 100_000_000);
-        assert_eq!(config.storage.allowed_extensions, vec!["mp3", "wav", "flac"]);
+        assert_eq!(
+            config.storage.allowed_extensions,
+            vec!["mp3", "wav", "flac"]
+        );
         assert!(config.storage.organize_by_date);
-        
+
         assert!(config.api.enable_auth);
         assert_eq!(config.api.rate_limit, 60);
         assert!(config.api.enable_cors);
         assert_eq!(config.api.cors_origins, vec!["*"]);
-        
+
         assert!(!config.security.require_api_key);
         assert!(!config.security.enable_ip_restrictions);
         assert_eq!(config.security.max_upload_size, 100_000_000);
         assert_eq!(config.security.request_timeout, 30);
-        
+
         assert_eq!(config.logging.level, "info");
         assert_eq!(config.logging.format, "json");
         assert!(config.logging.file.is_none());
-        
+
         assert!(config.monitor.is_none());
     }
 
@@ -397,7 +407,7 @@ mod tests {
             port: 3000,
             workers: 4,
         };
-        
+
         assert_eq!(server_config.host, "127.0.0.1");
         assert_eq!(server_config.port, 3000);
         assert_eq!(server_config.workers, 4);
@@ -412,7 +422,7 @@ mod tests {
             connect_timeout: 60,
             idle_timeout: 300,
         };
-        
+
         assert_eq!(db_config.url, "postgresql://user:pass@host:5432/db");
         assert_eq!(db_config.max_connections, 100);
         assert_eq!(db_config.min_connections, 10);
@@ -429,7 +439,7 @@ mod tests {
             allowed_extensions: vec!["mp3".to_string(), "wav".to_string()],
             organize_by_date: false,
         };
-        
+
         assert_eq!(storage_config.base_dir, PathBuf::from("/var/data"));
         assert_eq!(storage_config.upload_dir, "files");
         assert_eq!(storage_config.max_file_size, 50_000_000);
@@ -445,7 +455,7 @@ mod tests {
             enable_cors: false,
             cors_origins: vec!["https://example.com".to_string()],
         };
-        
+
         assert!(!api_config.enable_auth);
         assert_eq!(api_config.rate_limit, 100);
         assert!(!api_config.enable_cors);
@@ -460,7 +470,7 @@ mod tests {
             max_upload_size: 200_000_000,
             request_timeout: 60,
         };
-        
+
         assert!(security_config.require_api_key);
         assert!(security_config.enable_ip_restrictions);
         assert_eq!(security_config.max_upload_size, 200_000_000);
@@ -474,7 +484,7 @@ mod tests {
             format: "text".to_string(),
             file: Some(PathBuf::from("/var/log/app.log")),
         };
-        
+
         assert_eq!(logging_config.level, "debug");
         assert_eq!(logging_config.format, "text");
         assert_eq!(logging_config.file, Some(PathBuf::from("/var/log/app.log")));
@@ -486,15 +496,18 @@ mod tests {
             enabled: true,
             watch_directory: Some(PathBuf::from("/watch")),
         };
-        
+
         assert!(monitor_config.enabled);
-        assert_eq!(monitor_config.watch_directory, Some(PathBuf::from("/watch")));
+        assert_eq!(
+            monitor_config.watch_directory,
+            Some(PathBuf::from("/watch"))
+        );
     }
 
     #[test]
     fn test_monitor_config_default() {
         let monitor_config = MonitorConfig::default();
-        
+
         assert!(!monitor_config.enabled);
         assert!(monitor_config.watch_directory.is_none());
     }
@@ -502,16 +515,25 @@ mod tests {
     #[test]
     fn test_config_serialization() {
         let config = Config::default();
-        
+
         let serialized = serde_json::to_string(&config).unwrap();
         let deserialized: Config = serde_json::from_str(&serialized).unwrap();
-        
+
         assert_eq!(deserialized.server.host, config.server.host);
         assert_eq!(deserialized.server.port, config.server.port);
-        assert_eq!(deserialized.database.max_connections, config.database.max_connections);
-        assert_eq!(deserialized.storage.max_file_size, config.storage.max_file_size);
+        assert_eq!(
+            deserialized.database.max_connections,
+            config.database.max_connections
+        );
+        assert_eq!(
+            deserialized.storage.max_file_size,
+            config.storage.max_file_size
+        );
         assert_eq!(deserialized.api.rate_limit, config.api.rate_limit);
-        assert_eq!(deserialized.security.request_timeout, config.security.request_timeout);
+        assert_eq!(
+            deserialized.security.request_timeout,
+            config.security.request_timeout
+        );
         assert_eq!(deserialized.logging.level, config.logging.level);
     }
 
@@ -522,10 +544,10 @@ mod tests {
             enabled: true,
             watch_directory: Some(PathBuf::from("/watch")),
         });
-        
+
         let serialized = serde_json::to_string(&config).unwrap();
         let deserialized: Config = serde_json::from_str(&serialized).unwrap();
-        
+
         assert!(deserialized.monitor.is_some());
         let monitor = deserialized.monitor.unwrap();
         assert!(monitor.enabled);
@@ -535,12 +557,12 @@ mod tests {
     #[test]
     fn test_config_without_monitor() {
         let config = Config::default(); // monitor is None by default
-        
+
         let serialized = serde_json::to_string(&config).unwrap();
-        
+
         // When monitor is None, it should not appear in serialized JSON
         assert!(!serialized.contains("monitor"));
-        
+
         let deserialized: Config = serde_json::from_str(&serialized).unwrap();
         assert!(deserialized.monitor.is_none());
     }
@@ -583,9 +605,9 @@ mod tests {
             "security": {},
             "logging": {}
         }"#;
-        
+
         let config: Config = serde_json::from_str(json_str).unwrap();
-        
+
         assert_eq!(config.server.host, "localhost");
         assert_eq!(config.server.port, 8080); // Uses default
         assert_eq!(config.database.url, "postgresql://test");
@@ -605,15 +627,15 @@ mod tests {
     #[test]
     fn test_config_validation_paths() {
         let config = Config::default();
-        
+
         // Test that paths can be created and are valid
         assert!(config.storage.base_dir.to_str().is_some());
         assert!(!config.storage.upload_dir.is_empty());
-        
+
         if let Some(log_file) = &config.logging.file {
             assert!(log_file.to_str().is_some());
         }
-        
+
         if let Some(monitor) = &config.monitor {
             if let Some(watch_dir) = &monitor.watch_directory {
                 assert!(watch_dir.to_str().is_some());
@@ -624,29 +646,29 @@ mod tests {
     #[test]
     fn test_config_bounds_validation() {
         let config = Config::default();
-        
+
         // Test that numeric values are within reasonable bounds
         assert!(config.server.port > 0);
         assert!(config.server.port <= u16::MAX);
         assert!(config.server.workers > 0);
         assert!(config.server.workers < 1000);
-        
+
         assert!(config.database.max_connections > 0);
         assert!(config.database.max_connections >= config.database.min_connections);
         assert!(config.database.connect_timeout > 0);
         assert!(config.database.idle_timeout > 0);
-        
+
         assert!(config.redis.pool_size > 0);
-        
+
         assert!(config.storage.max_file_size > 0);
         assert!(!config.storage.allowed_extensions.is_empty());
-        
+
         assert!(config.api.rate_limit > 0);
         assert!(!config.api.cors_origins.is_empty());
-        
+
         assert!(config.security.max_upload_size > 0);
         assert!(config.security.request_timeout > 0);
-        
+
         assert!(!config.logging.level.is_empty());
         assert!(!config.logging.format.is_empty());
     }
@@ -707,33 +729,36 @@ mod tests {
                 watch_directory: Some(PathBuf::from("/watch/sdrtrunk")),
             }),
         };
-        
+
         // Test serialization and deserialization of complex config
         let serialized = serde_json::to_string_pretty(&complex_config).unwrap();
         let deserialized: Config = serde_json::from_str(&serialized).unwrap();
-        
+
         assert_eq!(deserialized.server.host, "192.168.1.100");
         assert_eq!(deserialized.server.port, 9090);
         assert_eq!(deserialized.server.workers, 8);
-        
+
         assert!(deserialized.database.url.contains("db.example.com"));
         assert_eq!(deserialized.database.max_connections, 200);
-        
+
         assert!(deserialized.redis.url.contains("redis.example.com"));
         assert_eq!(deserialized.redis.pool_size, 50);
-        
-        assert_eq!(deserialized.storage.base_dir, PathBuf::from("/data/sdrtrunk"));
+
+        assert_eq!(
+            deserialized.storage.base_dir,
+            PathBuf::from("/data/sdrtrunk")
+        );
         assert_eq!(deserialized.storage.allowed_extensions.len(), 4);
-        
+
         assert_eq!(deserialized.api.cors_origins.len(), 2);
         assert_eq!(deserialized.api.rate_limit, 120);
-        
+
         assert!(deserialized.security.require_api_key);
         assert!(deserialized.security.enable_ip_restrictions);
-        
+
         assert_eq!(deserialized.logging.level, "debug");
         assert!(deserialized.logging.file.is_some());
-        
+
         assert!(deserialized.monitor.is_some());
         let monitor = deserialized.monitor.unwrap();
         assert!(monitor.enabled);
