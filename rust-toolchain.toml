@@ -2,17 +2,13 @@
 # This ensures all developers and CI use the same Rust version
 
 [toolchain]
-# Use specific Rust version for reproducible builds
-channel = "1.85.0"
-
-# Specify components needed for development
+channel = "1.89.0"
 components = [
-    "rustfmt",      # Code formatting
-    "clippy",       # Linting
-    "rust-src",     # Source code for stdlib (needed for rust-analyzer)
-    "rust-analyzer", # LSP server for IDE support
-    "miri",         # Interpreter for detecting undefined behavior
-    "llvm-tools-preview", # LLVM tools for coverage and profiling
+  "rustfmt",
+  "clippy",
+  "rust-src",
+  "rust-analyzer",
+  "llvm-tools"
 ]
 
 # Specify targets for cross-compilation

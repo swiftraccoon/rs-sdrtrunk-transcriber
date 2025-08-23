@@ -16,7 +16,8 @@ install-tools:
     cargo install cargo-expand --locked
     cargo install cargo-udeps --locked
     cargo install cargo-bloat --locked
-    cargo install criterion-cli --locked
+    cargo install cargo-criterion --locked
+    cargo install critcmp --locked
     cargo install flamegraph --locked
 
 # Format all Rust code
@@ -74,10 +75,6 @@ test-std:
 # Run doctests
 doctest:
     cargo test --doc --workspace --all-features
-
-# Run tests with Miri for undefined behavior detection
-miri:
-    cargo +nightly miri test --workspace
 
 # Generate and open test coverage report
 coverage:
@@ -192,7 +189,7 @@ setup:
     @echo "🔧 Installing development tools..."
     just install-tools
     @echo "🦀 Setting up Rust..."
-    rustup component add rustfmt clippy rust-src rust-analyzer miri llvm-tools-preview
+    rustup component add rustfmt clippy rust-src rust-analyzer llvm-tools
     @echo "📦 Building project..."
     just check
     @echo "✅ Development setup complete!"
