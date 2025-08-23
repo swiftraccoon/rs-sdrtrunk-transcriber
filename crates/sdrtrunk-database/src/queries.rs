@@ -336,7 +336,7 @@ impl UploadLogQueries {
                 COUNT(CASE WHEN success THEN 1 END) as successful_uploads,
                 COUNT(CASE WHEN NOT success THEN 1 END) as failed_uploads,
                 AVG(CASE WHEN processing_time_ms IS NOT NULL THEN processing_time_ms END) as avg_processing_time,
-                SUM(CASE WHEN file_size IS NOT NULL THEN file_size END) as total_bytes_uploaded
+                COALESCE(SUM(CASE WHEN file_size IS NOT NULL THEN file_size END), 0)::BIGINT as total_bytes_uploaded
             FROM upload_logs
         ";
 
@@ -630,269 +630,6 @@ pub struct UploadStats {
     pub total_bytes_uploaded: i64,
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use sdrtrunk_core::types::TranscriptionStatus;
-    use sqlx::PgPool;
-    use uuid::Uuid;
-
-    // Helper function to create test database (would need actual test setup)
-    fn create_test_pool() -> PgPool {
-        // This would be implemented with actual test database setup
-        // For now, this is a placeholder
-        unimplemented!("Test database setup needed")
-    }
-
-    #[tokio::test]
-    #[ignore] // Ignore until test database is set up
-    #[allow(clippy::missing_panics_doc)]
-    async fn test_radio_call_insert_and_find() {
-        let pool = create_test_pool();
-
-        let call = RadioCall {
-            system_id: "test_system".to_string(),
-            talkgroup_id: Some(12345),
-            transcription_status: TranscriptionStatus::None,
-            ..RadioCall::default()
-        };
-
-        let id = RadioCallQueries::insert(&pool, &call).await.unwrap();
-        assert!(!id.is_nil());
-
-        let retrieved = RadioCallQueries::find_by_id(&pool, id).await.unwrap();
-        assert_eq!(retrieved.system_id, "test_system");
-        assert_eq!(retrieved.talkgroup_id, Some(12345));
-    }
-
-    #[tokio::test]
-    #[ignore] // Ignore until test database is set up
-    #[allow(clippy::missing_panics_doc)]
-    async fn test_radio_call_count_by_system() {
-        let pool = create_test_pool();
-
-        // Insert test calls
-        for i in 0..5 {
-            let call = RadioCall {
-                system_id: "count_test_system".to_string(),
-                talkgroup_id: Some(i),
-                ..RadioCall::default()
-            };
-            RadioCallQueries::insert(&pool, &call).await.unwrap();
-        }
-
-        let count = RadioCallQueries::count_by_system(&pool, "count_test_system")
-            .await
-            .unwrap();
-        assert_eq!(count, 5);
-    }
-
-    #[tokio::test]
-    #[ignore] // Ignore until test database is set up
-    #[allow(clippy::missing_panics_doc)]
-    async fn test_transcription_status_update() {
-        let pool = create_test_pool();
-
-        let call = RadioCall {
-            system_id: "transcription_test".to_string(),
-            transcription_status: TranscriptionStatus::Pending,
-            ..RadioCall::default()
-        };
-
-        let id = RadioCallQueries::insert(&pool, &call).await.unwrap();
-
-        // Update to processing
-        RadioCallQueries::update_transcription_status(
-            &pool,
-            TranscriptionUpdate {
-                id,
-                status: "processing",
-                text: None,
-                confidence: None,
-                error: None,
-            },
-        )
-        .await
-        .unwrap();
-
-        let updated = RadioCallQueries::find_by_id(&pool, id).await.unwrap();
-        assert_eq!(updated.transcription_status, Some("processing".to_string()));
-
-        // Update to completed
-        RadioCallQueries::update_transcription_status(
-            &pool,
-            TranscriptionUpdate {
-                id,
-                status: "completed",
-                text: Some("Test transcription"),
-                confidence: Some(0.95),
-                error: None,
-            },
-        )
-        .await
-        .unwrap();
-
-        let completed = RadioCallQueries::find_by_id(&pool, id).await.unwrap();
-        assert_eq!(
-            completed.transcription_status,
-            Some("completed".to_string())
-        );
-        assert_eq!(
-            completed.transcription_text,
-            Some("Test transcription".to_string())
-        );
-        assert!(completed.transcription_confidence.is_some());
-    }
-
-    #[tokio::test]
-    #[ignore] // Ignore until test database is set up
-    #[allow(clippy::missing_panics_doc)]
-    async fn test_system_stats_upsert() {
-        let pool = create_test_pool();
-
-        let stats = SystemStatsDb {
-            id: Uuid::new_v4(),
-            system_id: "upsert_test".to_string(),
-            system_label: Some("Test System".to_string()),
-            total_calls: Some(100),
-            calls_today: Some(10),
-            calls_this_hour: Some(2),
-            first_seen: Some(chrono::Utc::now() - chrono::Duration::days(30)),
-            last_seen: Some(chrono::Utc::now()),
-            top_talkgroups: None,
-            upload_sources: None,
-            last_updated: chrono::Utc::now(),
-        };
-
-        // First upsert (insert)
-        SystemStatsQueries::upsert(&pool, &stats).await.unwrap();
-
-        let retrieved = SystemStatsQueries::get_by_system_id(&pool, "upsert_test")
-            .await
-            .unwrap();
-        assert_eq!(retrieved.system_id, "upsert_test");
-        assert_eq!(retrieved.total_calls, Some(100));
-
-        // Second upsert (update)
-        let mut updated_stats = stats.clone();
-        updated_stats.total_calls = Some(150);
-        updated_stats.calls_today = Some(15);
-
-        SystemStatsQueries::upsert(&pool, &updated_stats)
-            .await
-            .unwrap();
-
-        let updated_retrieved = SystemStatsQueries::get_by_system_id(&pool, "upsert_test")
-            .await
-            .unwrap();
-        assert_eq!(updated_retrieved.total_calls, Some(150));
-        assert_eq!(updated_retrieved.calls_today, Some(15));
-    }
-
-    #[tokio::test]
-    #[ignore] // Ignore until test database is set up
-    #[allow(clippy::missing_panics_doc)]
-    async fn test_upload_log_operations() {
-        let pool = create_test_pool();
-
-        let log = UploadLogDb {
-            id: Uuid::new_v4(),
-            timestamp: chrono::Utc::now(),
-            client_ip: "127.0.0.1".parse::<std::net::IpAddr>().unwrap().into(),
-            user_agent: Some("Test User Agent".to_string()),
-            api_key_used: Some("test_key".to_string()),
-            system_id: Some("test_system".to_string()),
-            success: true,
-            error_message: None,
-            filename: Some("test.mp3".to_string()),
-            file_size: Some(1_024_000),
-            content_type: Some("audio/mpeg".to_string()),
-            response_code: Some(200),
-            processing_time_ms: Some(rust_decimal::Decimal::new(1500, 0)),
-        };
-
-        let id = UploadLogQueries::insert(&pool, &log).await.unwrap();
-        assert!(!id.is_nil());
-
-        let logs = UploadLogQueries::get_recent(&pool, 10, 0).await.unwrap();
-        assert!(!logs.is_empty());
-
-        let stats = UploadLogQueries::get_upload_stats(&pool).await.unwrap();
-        assert!(stats.total_uploads > 0);
-        assert!(stats.successful_uploads > 0);
-    }
-
-    #[test]
-    #[allow(clippy::missing_panics_doc)]
-    fn test_transcription_stats_creation() {
-        let stats = TranscriptionStats {
-            total: 1000,
-            completed: 850,
-            failed: 50,
-            processing: 10,
-            pending: 90,
-            avg_confidence: Some(0.92),
-        };
-
-        assert_eq!(stats.total, 1000);
-        assert_eq!(stats.completed, 850);
-        assert!(stats.avg_confidence.unwrap() > 0.9);
-    }
-
-    #[test]
-    #[allow(clippy::missing_panics_doc)]
-    fn test_upload_stats_creation() {
-        let stats = UploadStats {
-            total_uploads: 500,
-            successful_uploads: 475,
-            failed_uploads: 25,
-            avg_processing_time: Some(1200.0),
-            total_bytes_uploaded: 1024 * 1024 * 1024, // 1GB
-        };
-
-        assert_eq!(stats.total_uploads, 500);
-        assert_eq!(stats.successful_uploads + stats.failed_uploads, 500);
-        assert!(stats.avg_processing_time.unwrap() > 1000.0);
-        assert!(stats.total_bytes_uploaded > 1_000_000_000);
-    }
-
-    #[test]
-    #[allow(clippy::missing_panics_doc)]
-    fn test_error_conversions() {
-        // Test that database errors are properly converted
-        let sql_error = sqlx::Error::RowNotFound;
-        let app_error = match sql_error {
-            sqlx::Error::RowNotFound => Error::NotFound {
-                resource: "test resource".to_string(),
-            },
-            _ => Error::Database("other error".to_string()),
-        };
-
-        match app_error {
-            Error::NotFound { resource } => assert_eq!(resource, "test resource"),
-            _ => panic!("Expected NotFound error"),
-        }
-    }
-
-    #[test]
-    #[allow(clippy::missing_panics_doc)]
-    fn test_decimal_conversions() {
-        // Test decimal conversion for confidence values
-        let confidence = 0.95f32;
-        let decimal = rust_decimal::Decimal::try_from(confidence).unwrap();
-        let back_to_float = decimal.to_string().parse::<f32>().unwrap();
-
-        assert!((confidence - back_to_float).abs() < 0.001);
-
-        // Test duration conversion
-        let duration = 30.5f64;
-        let decimal = rust_decimal::Decimal::try_from(duration).unwrap();
-        let back_to_float = decimal.to_string().parse::<f64>().unwrap();
-
-        assert!((duration - back_to_float).abs() < 0.001);
-    }
-}
-
 // Convenience wrapper functions for API compatibility
 
 /// Insert a radio call (wrapper)
@@ -1098,4 +835,300 @@ pub async fn insert_upload_log(pool: &PgPool, params: UploadLogParams) -> Result
     };
 
     UploadLogQueries::insert(pool, &log).await
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use sdrtrunk_core::types::TranscriptionStatus;
+    use sqlx::PgPool;
+    use uuid::Uuid;
+
+    // Helper function to create test database
+    async fn create_test_pool() -> Option<PgPool> {
+        // Check if TEST_DATABASE_URL is set, if not, skip the test
+        if let Ok(database_url) = std::env::var("TEST_DATABASE_URL") {
+            match PgPool::connect(&database_url).await {
+                Ok(pool) => {
+                    // Skip migrations in test - assume they're already run by CI setup
+                    // The CI script runs migrations before tests
+                    Some(pool)
+                }
+                Err(e) => {
+                    eprintln!("Failed to connect to database: {e}");
+                    None
+                }
+            }
+        } else {
+            None
+        }
+    }
+
+    #[tokio::test]
+    #[allow(clippy::missing_panics_doc, clippy::missing_errors_doc)]
+    async fn test_radio_call_insert_and_find() -> Result<()> {
+        let Some(pool) = create_test_pool().await else {
+            eprintln!("Skipping test: TEST_DATABASE_URL not set or database not available");
+            return Ok(());
+        };
+
+        let call = RadioCall {
+            system_id: "test_system".to_string(),
+            talkgroup_id: Some(12345),
+            transcription_status: TranscriptionStatus::None,
+            ..RadioCall::default()
+        };
+
+        let id = RadioCallQueries::insert(&pool, &call).await?;
+        assert!(!id.is_nil());
+
+        let retrieved = RadioCallQueries::find_by_id(&pool, id).await?;
+        assert_eq!(retrieved.system_id, "test_system");
+        assert_eq!(retrieved.talkgroup_id, Some(12345));
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    #[allow(clippy::missing_panics_doc, clippy::missing_errors_doc)]
+    async fn test_radio_call_count_by_system() -> Result<()> {
+        let Some(pool) = create_test_pool().await else {
+            eprintln!("Skipping test: TEST_DATABASE_URL not set or database not available");
+            return Ok(());
+        };
+
+        // Use unique system ID to avoid conflicts with other test runs
+        // Keep it short to fit in varchar(50)
+        let unique_system = format!("test_{}", &Uuid::new_v4().to_string()[0..8]);
+
+        // Insert test calls
+        for i in 0..5 {
+            let call = RadioCall {
+                system_id: unique_system.clone(),
+                talkgroup_id: Some(i),
+                ..RadioCall::default()
+            };
+            RadioCallQueries::insert(&pool, &call).await?;
+        }
+
+        let count = RadioCallQueries::count_by_system(&pool, &unique_system).await?;
+        assert_eq!(count, 5);
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    #[allow(clippy::missing_panics_doc, clippy::missing_errors_doc)]
+    async fn test_transcription_status_update() -> Result<()> {
+        let Some(pool) = create_test_pool().await else {
+            eprintln!("Skipping test: TEST_DATABASE_URL not set or database not available");
+            return Ok(());
+        };
+
+        let call = RadioCall {
+            system_id: "transcription_test".to_string(),
+            transcription_status: TranscriptionStatus::Pending,
+            ..RadioCall::default()
+        };
+
+        let id = RadioCallQueries::insert(&pool, &call).await?;
+
+        // Update to processing
+        RadioCallQueries::update_transcription_status(
+            &pool,
+            TranscriptionUpdate {
+                id,
+                status: "processing",
+                text: None,
+                confidence: None,
+                error: None,
+            },
+        )
+        .await?;
+
+        let updated = RadioCallQueries::find_by_id(&pool, id).await?;
+        assert_eq!(updated.transcription_status, Some("processing".to_string()));
+
+        // Update to completed
+        RadioCallQueries::update_transcription_status(
+            &pool,
+            TranscriptionUpdate {
+                id,
+                status: "completed",
+                text: Some("Test transcription"),
+                confidence: Some(0.95),
+                error: None,
+            },
+        )
+        .await?;
+
+        let completed = RadioCallQueries::find_by_id(&pool, id).await?;
+        assert_eq!(
+            completed.transcription_status,
+            Some("completed".to_string())
+        );
+        assert_eq!(
+            completed.transcription_text,
+            Some("Test transcription".to_string())
+        );
+        assert!(completed.transcription_confidence.is_some());
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    #[allow(clippy::missing_panics_doc, clippy::missing_errors_doc)]
+    async fn test_system_stats_upsert() -> Result<()> {
+        let Some(pool) = create_test_pool().await else {
+            eprintln!("Skipping test: TEST_DATABASE_URL not set or database not available");
+            return Ok(());
+        };
+
+        let stats = SystemStatsDb {
+            id: Uuid::new_v4(),
+            system_id: "upsert_test".to_string(),
+            system_label: Some("Test System".to_string()),
+            total_calls: Some(100),
+            calls_today: Some(10),
+            calls_this_hour: Some(2),
+            first_seen: Some(chrono::Utc::now() - chrono::Duration::days(30)),
+            last_seen: Some(chrono::Utc::now()),
+            top_talkgroups: None,
+            upload_sources: None,
+            last_updated: chrono::Utc::now(),
+        };
+
+        // First upsert (insert)
+        SystemStatsQueries::upsert(&pool, &stats).await?;
+
+        let retrieved = SystemStatsQueries::get_by_system_id(&pool, "upsert_test").await?;
+        assert_eq!(retrieved.system_id, "upsert_test");
+        assert_eq!(retrieved.total_calls, Some(100));
+
+        // Second upsert (update)
+        let mut updated_stats = stats.clone();
+        updated_stats.total_calls = Some(150);
+        updated_stats.calls_today = Some(15);
+
+        SystemStatsQueries::upsert(&pool, &updated_stats).await?;
+
+        let updated_retrieved = SystemStatsQueries::get_by_system_id(&pool, "upsert_test").await?;
+        assert_eq!(updated_retrieved.total_calls, Some(150));
+        assert_eq!(updated_retrieved.calls_today, Some(15));
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    #[allow(clippy::missing_panics_doc, clippy::missing_errors_doc)]
+    async fn test_upload_log_operations() -> Result<()> {
+        let Some(pool) = create_test_pool().await else {
+            eprintln!("Skipping test: TEST_DATABASE_URL not set or database not available");
+            return Ok(());
+        };
+
+        let log = UploadLogDb {
+            id: Uuid::new_v4(),
+            timestamp: chrono::Utc::now(),
+            client_ip: "127.0.0.1"
+                .parse::<std::net::IpAddr>()
+                .map_err(|e| Error::Validation {
+                    field: "client_ip".to_string(),
+                    message: e.to_string(),
+                })?
+                .into(),
+            user_agent: Some("Test User Agent".to_string()),
+            api_key_used: Some("test_key".to_string()),
+            system_id: Some("test_system".to_string()),
+            success: true,
+            error_message: None,
+            filename: Some("test.mp3".to_string()),
+            file_size: Some(1_024_000),
+            content_type: Some("audio/mpeg".to_string()),
+            response_code: Some(200),
+            processing_time_ms: Some(rust_decimal::Decimal::new(1500, 0)),
+        };
+
+        let id = UploadLogQueries::insert(&pool, &log).await?;
+        assert!(!id.is_nil());
+
+        let logs = UploadLogQueries::get_recent(&pool, 10, 0).await?;
+        assert!(!logs.is_empty());
+
+        let stats = UploadLogQueries::get_upload_stats(&pool).await?;
+        assert!(stats.total_uploads > 0);
+        assert!(stats.successful_uploads > 0);
+
+        Ok(())
+    }
+
+    #[test]
+    #[allow(clippy::missing_panics_doc)]
+    fn test_transcription_stats_creation() {
+        let stats = TranscriptionStats {
+            total: 1000,
+            completed: 850,
+            failed: 50,
+            processing: 10,
+            pending: 90,
+            avg_confidence: Some(0.92),
+        };
+
+        assert_eq!(stats.total, 1000);
+        assert_eq!(stats.completed, 850);
+        assert!(stats.avg_confidence.unwrap() > 0.9);
+    }
+
+    #[test]
+    #[allow(clippy::missing_panics_doc)]
+    fn test_upload_stats_creation() {
+        let stats = UploadStats {
+            total_uploads: 500,
+            successful_uploads: 475,
+            failed_uploads: 25,
+            avg_processing_time: Some(1200.0),
+            total_bytes_uploaded: 1024 * 1024 * 1024, // 1GB
+        };
+
+        assert_eq!(stats.total_uploads, 500);
+        assert_eq!(stats.successful_uploads + stats.failed_uploads, 500);
+        assert!(stats.avg_processing_time.unwrap() > 1000.0);
+        assert!(stats.total_bytes_uploaded > 1_000_000_000);
+    }
+
+    #[test]
+    #[allow(clippy::missing_panics_doc)]
+    fn test_error_conversions() {
+        // Test that database errors are properly converted
+        let sql_error = sqlx::Error::RowNotFound;
+        let app_error = match sql_error {
+            sqlx::Error::RowNotFound => Error::NotFound {
+                resource: "test resource".to_string(),
+            },
+            _ => Error::Database("other error".to_string()),
+        };
+
+        match app_error {
+            Error::NotFound { resource } => assert_eq!(resource, "test resource"),
+            _ => panic!("Expected NotFound error"),
+        }
+    }
+
+    #[test]
+    #[allow(clippy::missing_panics_doc)]
+    fn test_decimal_conversions() {
+        // Test decimal conversion for confidence values
+        let confidence = 0.95f32;
+        let decimal = rust_decimal::Decimal::try_from(confidence).unwrap();
+        let back_to_float = decimal.to_string().parse::<f32>().unwrap();
+
+        assert!((confidence - back_to_float).abs() < 0.001);
+
+        // Test duration conversion
+        let duration = 30.5f64;
+        let decimal = rust_decimal::Decimal::try_from(duration).unwrap();
+        let back_to_float = decimal.to_string().parse::<f64>().unwrap();
+
+        assert!((duration - back_to_float).abs() < 0.001);
+    }
 }

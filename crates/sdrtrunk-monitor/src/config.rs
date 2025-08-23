@@ -88,7 +88,7 @@ pub struct ProcessingConfig {
     #[serde(default = "default_move_after_processing")]
     pub move_after_processing: bool,
 
-    /// Delete files after processing (only if move_after_processing is false)
+    /// Delete files after processing (only if `move_after_processing` is false)
     #[serde(default = "default_delete_after_processing")]
     pub delete_after_processing: bool,
 
@@ -198,27 +198,27 @@ fn default_file_extensions() -> Vec<String> {
     vec!["mp3".to_string()]
 }
 
-fn default_min_file_size() -> u64 {
+const fn default_min_file_size() -> u64 {
     1024 // 1KB minimum
 }
 
-fn default_max_file_size() -> u64 {
+const fn default_max_file_size() -> u64 {
     100_000_000 // 100MB maximum
 }
 
-fn default_debounce_delay() -> u64 {
+const fn default_debounce_delay() -> u64 {
     1000 // 1 second
 }
 
-fn default_recursive() -> bool {
+const fn default_recursive() -> bool {
     true
 }
 
-fn default_follow_symlinks() -> bool {
+const fn default_follow_symlinks() -> bool {
     false
 }
 
-fn default_processing_interval() -> u64 {
+const fn default_processing_interval() -> u64 {
     5 // 5 seconds
 }
 
@@ -226,67 +226,67 @@ fn default_processing_workers() -> usize {
     num_cpus::get().max(2)
 }
 
-fn default_max_retry_attempts() -> u32 {
+const fn default_max_retry_attempts() -> u32 {
     3
 }
 
-fn default_retry_delay() -> u64 {
+const fn default_retry_delay() -> u64 {
     10 // 10 seconds base delay
 }
 
-fn default_processing_timeout() -> u64 {
+const fn default_processing_timeout() -> u64 {
     300 // 5 minutes
 }
 
-fn default_move_after_processing() -> bool {
+const fn default_move_after_processing() -> bool {
     true
 }
 
-fn default_delete_after_processing() -> bool {
+const fn default_delete_after_processing() -> bool {
     false
 }
 
-fn default_verify_file_integrity() -> bool {
+const fn default_verify_file_integrity() -> bool {
     true
 }
 
-fn default_organize_by_date() -> bool {
+const fn default_organize_by_date() -> bool {
     true
 }
 
-fn default_organize_by_system() -> bool {
+const fn default_organize_by_system() -> bool {
     true
 }
 
-fn default_compress_archive() -> bool {
+const fn default_compress_archive() -> bool {
     false
 }
 
-fn default_compression_level() -> u32 {
+const fn default_compression_level() -> u32 {
     6
 }
 
-fn default_max_archive_size() -> u64 {
+const fn default_max_archive_size() -> u64 {
     10_000_000_000 // 10GB
 }
 
-fn default_archive_retention_days() -> u32 {
+const fn default_archive_retention_days() -> u32 {
     90 // 3 months
 }
 
-fn default_max_queue_size() -> usize {
+const fn default_max_queue_size() -> usize {
     10000
 }
 
-fn default_priority_by_age() -> bool {
+const fn default_priority_by_age() -> bool {
     true
 }
 
-fn default_priority_by_size() -> bool {
+const fn default_priority_by_size() -> bool {
     false
 }
 
-fn default_batch_size() -> usize {
+const fn default_batch_size() -> usize {
     10
 }
 
@@ -294,34 +294,34 @@ fn default_service_name() -> String {
     "sdrtrunk-monitor".to_string()
 }
 
-fn default_shutdown_timeout() -> u64 {
+const fn default_shutdown_timeout() -> u64 {
     30 // 30 seconds
 }
 
-fn default_health_check_interval() -> u64 {
+const fn default_health_check_interval() -> u64 {
     60 // 1 minute
 }
 
-fn default_enable_metrics() -> bool {
+const fn default_enable_metrics() -> bool {
     true
 }
 
-fn default_metrics_interval() -> u64 {
+const fn default_metrics_interval() -> u64 {
     300 // 5 minutes
 }
 
-fn default_auto_restart() -> bool {
+const fn default_auto_restart() -> bool {
     true
 }
 
-fn default_max_restart_attempts() -> u32 {
+const fn default_max_restart_attempts() -> u32 {
     5
 }
 
 impl WatchConfig {
     /// Get debounce delay as Duration
     #[must_use]
-    pub fn debounce_delay(&self) -> Duration {
+    pub const fn debounce_delay(&self) -> Duration {
         Duration::from_millis(self.debounce_delay_ms)
     }
 }
@@ -329,19 +329,19 @@ impl WatchConfig {
 impl ProcessingConfig {
     /// Get processing interval as Duration
     #[must_use]
-    pub fn processing_interval(&self) -> Duration {
+    pub const fn processing_interval(&self) -> Duration {
         Duration::from_secs(self.processing_interval_seconds)
     }
 
     /// Get retry delay as Duration
     #[must_use]
-    pub fn retry_delay(&self) -> Duration {
+    pub const fn retry_delay(&self) -> Duration {
         Duration::from_secs(self.retry_delay_seconds)
     }
 
     /// Get processing timeout as Duration
     #[must_use]
-    pub fn processing_timeout(&self) -> Duration {
+    pub const fn processing_timeout(&self) -> Duration {
         Duration::from_secs(self.processing_timeout_seconds)
     }
 }
@@ -349,25 +349,33 @@ impl ProcessingConfig {
 impl ServiceConfig {
     /// Get shutdown timeout as Duration
     #[must_use]
-    pub fn shutdown_timeout(&self) -> Duration {
+    pub const fn shutdown_timeout(&self) -> Duration {
         Duration::from_secs(self.shutdown_timeout_seconds)
     }
 
     /// Get health check interval as Duration
     #[must_use]
-    pub fn health_check_interval(&self) -> Duration {
+    pub const fn health_check_interval(&self) -> Duration {
         Duration::from_secs(self.health_check_interval_seconds)
     }
 
     /// Get metrics interval as Duration
     #[must_use]
-    pub fn metrics_interval(&self) -> Duration {
+    pub const fn metrics_interval(&self) -> Duration {
         Duration::from_secs(self.metrics_interval_seconds)
     }
 }
 
 impl MonitorConfig {
     /// Load configuration from environment and files
+    ///
+    /// # Errors
+    ///
+    /// Returns [`MonitorError::Configuration`] if:
+    /// - Configuration files contain invalid TOML/JSON syntax
+    /// - Required configuration values are missing
+    /// - Configuration values are out of valid ranges
+    /// - Environment variables have invalid values
     pub fn load() -> crate::Result<Self> {
         let config = config::Config::builder()
             .add_source(config::File::with_name("monitor").required(false))
@@ -385,8 +393,7 @@ impl MonitorConfig {
 impl Default for MonitorConfig {
     fn default() -> Self {
         let home_dir = directories::UserDirs::new()
-            .map(|dirs| dirs.home_dir().to_path_buf())
-            .unwrap_or_else(|| PathBuf::from("."));
+            .map_or_else(|| PathBuf::from("."), |dirs| dirs.home_dir().to_path_buf());
 
         let data_dir = home_dir.join(".sdrtrunk-monitor");
 

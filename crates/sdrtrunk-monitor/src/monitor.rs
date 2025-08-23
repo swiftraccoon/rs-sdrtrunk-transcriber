@@ -51,7 +51,7 @@ pub struct FileMonitor {
     config: WatchConfig,
 
     /// File system watcher/debouncer
-    _debouncer: Option<Debouncer<RecommendedWatcher, FileIdMap>>,
+    debouncer: Option<Debouncer<RecommendedWatcher, FileIdMap>>,
 
     /// Event receiver
     event_receiver: Option<mpsc::Receiver<FileEvent>>,
@@ -59,15 +59,28 @@ pub struct FileMonitor {
 
 impl FileMonitor {
     /// Create a new file monitor
-    pub fn new(config: WatchConfig) -> Self {
+    #[must_use]
+    pub const fn new(config: WatchConfig) -> Self {
         Self {
             config,
-            _debouncer: None,
+            debouncer: None,
             event_receiver: None,
         }
     }
 
     /// Start monitoring the configured directory
+    ///
+    /// # Errors
+    ///
+    /// Returns [`MonitorError`] if:
+    /// - Cannot create the watch directory
+    /// - Cannot initialize the file system watcher
+    /// - Cannot watch the specified directory
+    ///
+    /// # Panics
+    ///
+    /// Panics if called multiple times on the same instance without calling `stop()` first,
+    /// as it relies on `event_receiver` being `Some` after successful initialization.
     pub async fn start(&mut self) -> Result<mpsc::Receiver<FileEvent>> {
         info!(
             watch_dir = %self.config.watch_directory.display(),
@@ -91,6 +104,9 @@ impl FileMonitor {
         // Clone config for the closure
         let config = self.config.clone();
 
+        // Get a handle to the current runtime for spawning tasks from the callback
+        let runtime_handle = tokio::runtime::Handle::current();
+
         // Create debounced watcher
         let mut debouncer = new_debouncer(
             self.config.debounce_delay(),
@@ -98,17 +114,18 @@ impl FileMonitor {
             move |result: DebounceEventResult| {
                 let tx = tx.clone();
                 let config = config.clone();
+                let runtime_handle = runtime_handle.clone();
 
-                tokio::spawn(async move {
+                // Spawn the async task using the runtime handle
+                runtime_handle.spawn(async move {
                     match result {
                         Ok(events) => {
                             for event in events {
                                 if let Some(file_event) =
                                     Self::process_debounced_event(event, &config).await
+                                    && let Err(e) = tx.send(file_event).await
                                 {
-                                    if let Err(e) = tx.send(file_event).await {
-                                        error!("Failed to send file event: {}", e);
-                                    }
+                                    error!("Failed to send file event: {}", e);
                                 }
                             }
                         }
@@ -141,7 +158,7 @@ impl FileMonitor {
 
         info!("File system monitor started successfully");
 
-        self._debouncer = Some(debouncer);
+        self.debouncer = Some(debouncer);
         self.event_receiver = Some(rx);
 
         Ok(self.event_receiver.take().unwrap())
@@ -149,9 +166,9 @@ impl FileMonitor {
 
     /// Stop the file monitor
     pub fn stop(&mut self) {
-        if self._debouncer.is_some() {
+        if self.debouncer.is_some() {
             info!("Stopping file system monitor");
-            self._debouncer = None;
+            self.debouncer = None;
             self.event_receiver = None;
         }
     }
@@ -161,90 +178,28 @@ impl FileMonitor {
         event: DebouncedEvent,
         config: &WatchConfig,
     ) -> Option<FileEvent> {
-        // Get the first path from the event (DebouncedEvent contains multiple paths)
         let path = event.paths.first()?;
-
         debug!("Processing debounced event for: {}", path.display());
 
-        // Check if file matches our patterns
-        if !Self::matches_patterns(path, &config.file_patterns, &config.file_extensions) {
-            debug!("File does not match patterns: {}", path.display());
+        // Basic filtering
+        if !Self::should_process_path(path, config).await? {
             return None;
         }
 
-        // Skip symbolic links if not configured to follow them
-        if !config.follow_symlinks {
-            if let Ok(metadata) = tokio::fs::symlink_metadata(path).await {
-                if metadata.file_type().is_symlink() {
-                    debug!("Skipping symbolic link: {}", path.display());
-                    return None;
-                }
-            }
-        }
+        // Get file metadata and size
+        let file_size = Self::get_file_size(path).await?;
 
-        // Get file metadata
-        let metadata = match tokio::fs::metadata(path).await {
-            Ok(metadata) => metadata,
-            Err(e) => {
-                warn!(
-                    path = %path.display(),
-                    error = %e,
-                    "Failed to get file metadata"
-                );
-                return None;
-            }
-        };
-
-        let file_size = metadata.len();
-
-        // Check file size constraints
-        if file_size < config.min_file_size {
-            debug!(
-                path = %path.display(),
-                size = file_size,
-                min_size = config.min_file_size,
-                "File too small, skipping"
-            );
+        // Check size constraints
+        if !Self::is_size_within_limits(file_size, config, path) {
             return None;
         }
 
-        if file_size > config.max_file_size {
-            debug!(
-                path = %path.display(),
-                size = file_size,
-                max_size = config.max_file_size,
-                "File too large, skipping"
-            );
+        // Convert and validate event type
+        let event_type = Self::convert_event_type(event.event.kind)?;
+
+        // Validate file existence for certain event types
+        if !Self::validate_file_existence(&event_type, path) {
             return None;
-        }
-
-        // Convert notify event to our event type
-        let event_type = match event.event.kind {
-            notify::EventKind::Create(_) => FileEventType::Created,
-            notify::EventKind::Modify(_) => FileEventType::Modified,
-            notify::EventKind::Remove(_) => FileEventType::Removed,
-            notify::EventKind::Access(_) => {
-                // Skip access events as they're too noisy
-                return None;
-            }
-            _ => {
-                debug!("Unhandled event kind: {:?}", event.event.kind);
-                return None;
-            }
-        };
-
-        // Only process create and modify events for files that currently exist
-        match event_type {
-            FileEventType::Created | FileEventType::Modified => {
-                if !path.exists() {
-                    debug!("File no longer exists: {}", path.display());
-                    return None;
-                }
-            }
-            FileEventType::Removed => {
-                // File was removed, we still want to process this event
-            }
-            _ => {}
         }
 
         debug!(
@@ -262,7 +217,101 @@ impl FileMonitor {
         })
     }
 
+    /// Check if a path should be processed based on patterns and symlink settings
+    async fn should_process_path(path: &Path, config: &WatchConfig) -> Option<bool> {
+        // Check if file matches our patterns
+        if !Self::matches_patterns(path, &config.file_patterns, &config.file_extensions) {
+            debug!("File does not match patterns: {}", path.display());
+            return Some(false);
+        }
+
+        // Skip symbolic links if not configured to follow them
+        if !config.follow_symlinks
+            && let Ok(metadata) = tokio::fs::symlink_metadata(path).await
+            && metadata.file_type().is_symlink()
+        {
+            debug!("Skipping symbolic link: {}", path.display());
+            return Some(false);
+        }
+
+        Some(true)
+    }
+
+    /// Get file size, returning None if metadata cannot be read
+    async fn get_file_size(path: &Path) -> Option<u64> {
+        match tokio::fs::metadata(path).await {
+            Ok(metadata) => Some(metadata.len()),
+            Err(e) => {
+                warn!(
+                    path = %path.display(),
+                    error = %e,
+                    "Failed to get file metadata"
+                );
+                None
+            }
+        }
+    }
+
+    /// Check if file size is within configured limits
+    fn is_size_within_limits(file_size: u64, config: &WatchConfig, path: &Path) -> bool {
+        if file_size < config.min_file_size {
+            debug!(
+                path = %path.display(),
+                size = file_size,
+                min_size = config.min_file_size,
+                "File too small, skipping"
+            );
+            return false;
+        }
+
+        if file_size > config.max_file_size {
+            debug!(
+                path = %path.display(),
+                size = file_size,
+                max_size = config.max_file_size,
+                "File too large, skipping"
+            );
+            return false;
+        }
+
+        true
+    }
+
+    /// Convert notify event kind to our event type
+    fn convert_event_type(event_kind: notify::EventKind) -> Option<FileEventType> {
+        match event_kind {
+            notify::EventKind::Create(_) => Some(FileEventType::Created),
+            notify::EventKind::Modify(_) => Some(FileEventType::Modified),
+            notify::EventKind::Remove(_) => Some(FileEventType::Removed),
+            notify::EventKind::Access(_) => {
+                // Skip access events as they're too noisy
+                None
+            }
+            _ => {
+                debug!("Unhandled event kind: {:?}", event_kind);
+                None
+            }
+        }
+    }
+
+    /// Validate that file exists for events that require it
+    fn validate_file_existence(event_type: &FileEventType, path: &Path) -> bool {
+        match event_type {
+            FileEventType::Created | FileEventType::Modified => {
+                if !path.exists() {
+                    debug!("File no longer exists: {}", path.display());
+                    return false;
+                }
+            }
+            FileEventType::Removed | FileEventType::MovedTo => {
+                // File was removed or moved, we still want to process this event
+            }
+        }
+        true
+    }
+
     /// Check if a file matches the configured patterns and extensions
+    #[must_use]
     pub fn matches_patterns(path: &Path, patterns: &[String], extensions: &[String]) -> bool {
         let path_str = path.to_string_lossy();
         let file_name = path
@@ -295,8 +344,7 @@ impl FileMonitor {
                 return true;
             }
 
-            if pattern.starts_with("*.") {
-                let ext = &pattern[2..];
+            if let Some(ext) = pattern.strip_prefix("*.") {
                 return file_name.ends_with(&format!(".{}", ext.to_lowercase()));
             }
 
@@ -304,13 +352,15 @@ impl FileMonitor {
                 // Basic wildcard matching
                 let pattern_lower = pattern.to_lowercase();
                 if pattern_lower.starts_with('*') && pattern_lower.ends_with('*') {
-                    let middle = &pattern_lower[1..pattern_lower.len() - 1];
-                    return file_name.contains(middle);
-                } else if pattern_lower.starts_with('*') {
-                    let suffix = &pattern_lower[1..];
+                    if let Some(middle) = pattern_lower
+                        .strip_prefix('*')
+                        .and_then(|s| s.strip_suffix('*'))
+                    {
+                        return file_name.contains(middle);
+                    }
+                } else if let Some(suffix) = pattern_lower.strip_prefix('*') {
                     return file_name.ends_with(suffix);
-                } else if pattern_lower.ends_with('*') {
-                    let prefix = &pattern_lower[..pattern_lower.len() - 1];
+                } else if let Some(prefix) = pattern_lower.strip_suffix('*') {
                     return file_name.starts_with(prefix);
                 }
             }
@@ -321,6 +371,12 @@ impl FileMonitor {
     }
 
     /// Manually scan the watch directory for existing files
+    ///
+    /// # Errors
+    ///
+    /// Returns [`MonitorError`] if:
+    /// - Cannot read the watch directory or subdirectories
+    /// - I/O errors occur during directory traversal
     pub async fn scan_existing_files(&self) -> Result<Vec<PathBuf>> {
         info!(
             directory = %self.config.watch_directory.display(),
@@ -336,6 +392,12 @@ impl FileMonitor {
     }
 
     /// Recursively scan a directory for matching files
+    ///
+    /// # Errors
+    ///
+    /// Returns [`MonitorError`] if:
+    /// - Cannot read directory entries
+    /// - I/O errors occur during file metadata access
     #[async_recursion::async_recursion]
     async fn scan_directory(
         &self,
@@ -404,6 +466,11 @@ mod tests {
     use tokio::time::{Duration as TokioDuration, sleep};
 
     #[tokio::test]
+    /// Test basic file monitoring functionality
+    ///
+    /// # Panics
+    ///
+    /// Panics if test setup fails (temp directory creation, file operations)
     async fn test_file_monitor_basic() {
         let temp_dir = TempDir::new().unwrap();
         let watch_dir = temp_dir.path().to_path_buf();
@@ -433,7 +500,7 @@ mod tests {
                 assert_eq!(event.path, test_file);
                 assert!(matches!(event.event_type, FileEventType::Created));
             }
-            _ = sleep(TokioDuration::from_secs(5)) => {
+            () = sleep(TokioDuration::from_secs(5)) => {
                 panic!("Timeout waiting for file event");
             }
         }
@@ -442,6 +509,11 @@ mod tests {
     }
 
     #[test]
+    /// Test pattern matching functionality
+    ///
+    /// # Panics
+    ///
+    /// Panics if assertions fail
     fn test_pattern_matching() {
         let path = Path::new("/test/file.mp3");
 
@@ -468,6 +540,11 @@ mod tests {
     }
 
     #[tokio::test]
+    /// Test scanning for existing files
+    ///
+    /// # Panics
+    ///
+    /// Panics if test setup fails (temp directory creation, file operations)
     async fn test_scan_existing_files() {
         let temp_dir = TempDir::new().unwrap();
         let watch_dir = temp_dir.path().to_path_buf();

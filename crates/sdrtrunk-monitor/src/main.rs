@@ -1,7 +1,7 @@
-//! SDRTrunk File Monitor Service
+//! `SDRTrunk` File Monitor Service
 //!
 //! A high-performance, cross-platform file monitoring service that watches for
-//! new MP3 files from SDRTrunk and automatically processes them for transcription.
+//! new MP3 files from `SDRTrunk` and automatically processes them for transcription.
 
 #![forbid(unsafe_code)]
 #![warn(
@@ -18,7 +18,7 @@ use std::path::PathBuf;
 use tokio::signal;
 use tracing::{error, info, warn};
 
-/// Command line interface for the SDRTrunk monitor service
+/// Command line interface for the `SDRTrunk` monitor service
 #[derive(Parser)]
 #[command(
     name = "sdrtrunk-monitor",
@@ -164,30 +164,43 @@ enum QueueCommands {
     },
 }
 
+/// Main entry point for the monitor service
+///
+/// # Errors
+///
+/// Returns error if service initialization or execution fails
+///
+/// # Panics
+///
+/// Panics if the tokio runtime cannot be initialized
 #[tokio::main]
 async fn main() -> Result<()> {
     // Load .env file if it exists (for development convenience)
     if let Err(e) = dotenvy::dotenv() {
         // It's okay if .env doesn't exist
-        eprintln!("Note: .env file not loaded: {}", e);
+        eprintln!("Note: .env file not loaded: {e}");
     }
-    
+
     let cli = Cli::parse();
 
     // Initialize logging
-    init_logging(&cli)?;
+    init_logging(&cli);
 
     // Load configuration
     let config = load_config(cli.config.as_deref()).await?;
 
     match cli.command {
         Some(Commands::Start { daemon, pid_file }) => start_service(config, daemon, pid_file).await,
-        Some(Commands::Stop { pid_file }) => stop_service(pid_file).await,
-        Some(Commands::Status { format }) => show_status(&format).await,
-        Some(Commands::Metrics { format, watch }) => show_metrics(&format, watch).await,
-        Some(Commands::Config { show, validate }) => {
-            handle_config_command(&config, show, validate).await
+        Some(Commands::Stop { pid_file }) => stop_service(pid_file),
+        Some(Commands::Status { format }) => {
+            show_status(&format);
+            Ok(())
         }
+        Some(Commands::Metrics { format, watch }) => {
+            show_metrics(&format, watch);
+            Ok(())
+        }
+        Some(Commands::Config { show, validate }) => handle_config_command(&config, show, validate),
         Some(Commands::Queue { action }) => handle_queue_command(action, &config).await,
         Some(Commands::Scan { directory, execute }) => {
             scan_directory(directory, execute, &config).await
@@ -200,7 +213,7 @@ async fn main() -> Result<()> {
 }
 
 /// Initialize logging system
-fn init_logging(cli: &Cli) -> Result<()> {
+fn init_logging(cli: &Cli) {
     use tracing_subscriber::{EnvFilter, layer::SubscriberExt, util::SubscriberInitExt};
 
     let env_filter =
@@ -223,11 +236,13 @@ fn init_logging(cli: &Cli) -> Result<()> {
         log_level = cli.log_level,
         "SDRTrunk Monitor Service starting"
     );
-
-    Ok(())
 }
 
 /// Load configuration from file or environment
+///
+/// # Errors
+///
+/// Returns error if the configuration file cannot be read or parsed
 async fn load_config(config_path: Option<&std::path::Path>) -> Result<MonitorConfig> {
     if let Some(path) = config_path {
         info!("Loading configuration from: {}", path.display());
@@ -253,14 +268,48 @@ async fn load_config(config_path: Option<&std::path::Path>) -> Result<MonitorCon
     }
 }
 
+/// Run the monitoring service and wait for shutdown
+///
+/// # Errors
+///
+/// Returns error if the service fails
+#[allow(clippy::future_not_send)]
+async fn run_monitor_service(service: MonitorService) -> Result<()> {
+    service.start().await?;
+    info!("Monitoring service is running. Press Ctrl+C to stop.");
+
+    wait_for_shutdown_signal(&service).await;
+
+    service.stop().await?;
+    info!("Service stopped successfully");
+    Ok(())
+}
+
+/// Wait for shutdown signal (Ctrl+C or service shutdown)
+async fn wait_for_shutdown_signal(service: &MonitorService) {
+    tokio::select! {
+        _ = signal::ctrl_c() => {
+            info!("Received Ctrl+C, shutting down gracefully");
+        }
+        () = service.wait_for_shutdown() => {
+            info!("Service requested shutdown");
+        }
+    }
+}
+
 /// Start the monitoring service
+///
+/// # Errors
+///
+/// Returns error if the service cannot be started
+#[allow(clippy::future_not_send)]
 async fn start_service(
     config: MonitorConfig,
     daemon: bool,
     pid_file: Option<PathBuf>,
 ) -> Result<()> {
     if daemon {
-        return start_daemon(config, pid_file).await;
+        return start_daemon(config, pid_file);
     }
 
     info!(
@@ -270,31 +319,17 @@ async fn start_service(
         "Starting monitoring service"
     );
 
-    // Create and start service
+    // Create and run service
     let service = MonitorService::new(config).await?;
-    service.start().await?;
-
-    info!("Monitoring service is running. Press Ctrl+C to stop.");
-
-    // Wait for shutdown signal
-    tokio::select! {
-        _ = signal::ctrl_c() => {
-            info!("Received Ctrl+C, shutting down gracefully");
-        }
-        _ = service.wait_for_shutdown() => {
-            info!("Service requested shutdown");
-        }
-    }
-
-    // Stop service
-    service.stop().await?;
-    info!("Service stopped successfully");
-
-    Ok(())
+    run_monitor_service(service).await
 }
 
 /// Start service in daemon mode
-async fn start_daemon(_config: MonitorConfig, _pid_file: Option<PathBuf>) -> Result<()> {
+///
+/// # Errors
+///
+/// Returns error because daemon mode is not yet implemented
+fn start_daemon(_config: MonitorConfig, _pid_file: Option<PathBuf>) -> Result<()> {
     // Daemon mode implementation would go here
     // This is a complex topic that involves forking, detaching from terminal, etc.
     // For now, we'll just return an error
@@ -305,7 +340,11 @@ async fn start_daemon(_config: MonitorConfig, _pid_file: Option<PathBuf>) -> Res
 }
 
 /// Stop a running service
-async fn stop_service(_pid_file: Option<PathBuf>) -> Result<()> {
+///
+/// # Errors
+///
+/// Returns error because service stopping is not yet implemented
+fn stop_service(_pid_file: Option<PathBuf>) -> Result<()> {
     // Service stopping implementation would read PID file and send signal
     // For now, we'll just return an error
     error!("Service stopping is not yet implemented");
@@ -315,54 +354,74 @@ async fn stop_service(_pid_file: Option<PathBuf>) -> Result<()> {
 }
 
 /// Show service status
-async fn show_status(_format: &str) -> Result<()> {
+fn show_status(_format: &str) {
     // Status checking implementation would connect to running service
     // For now, we'll just show a placeholder
     println!("Service status checking is not yet implemented");
-    Ok(())
 }
 
 /// Show service metrics
-async fn show_metrics(_format: &str, _watch: Option<u64>) -> Result<()> {
+fn show_metrics(_format: &str, _watch: Option<u64>) {
     // Metrics display implementation would connect to running service
     // For now, we'll just show a placeholder
     println!("Service metrics display is not yet implemented");
+}
+
+/// Validate configuration directories
+fn validate_config_directories(config: &MonitorConfig) {
+    info!("Validating configuration...");
+
+    for dir in [
+        &config.watch.watch_directory,
+        &config.storage.archive_directory,
+        &config.storage.failed_directory,
+        &config.storage.temp_directory,
+    ] {
+        if !dir.exists() {
+            warn!("Directory does not exist: {}", dir.display());
+        }
+    }
+
+    info!("Configuration validation completed");
+}
+
+/// Show configuration as TOML
+///
+/// # Errors
+///
+/// Returns error if configuration cannot be serialized
+fn show_config(config: &MonitorConfig) -> Result<()> {
+    let config_toml = toml::to_string_pretty(config).map_err(|e| {
+        sdrtrunk_monitor::MonitorError::configuration(format!(
+            "Failed to serialize configuration: {e}"
+        ))
+    })?;
+    println!("{config_toml}");
     Ok(())
 }
 
 /// Handle configuration commands
-async fn handle_config_command(config: &MonitorConfig, show: bool, validate: bool) -> Result<()> {
+///
+/// # Errors
+///
+/// Returns error if configuration cannot be serialized
+fn handle_config_command(config: &MonitorConfig, show: bool, validate: bool) -> Result<()> {
     if validate {
-        info!("Validating configuration...");
-
-        // Validate directories exist or can be created
-        for dir in [
-            &config.watch.watch_directory,
-            &config.storage.archive_directory,
-            &config.storage.failed_directory,
-            &config.storage.temp_directory,
-        ] {
-            if !dir.exists() {
-                warn!("Directory does not exist: {}", dir.display());
-            }
-        }
-
-        info!("Configuration validation completed");
+        validate_config_directories(config);
     }
 
     if show {
-        let config_toml = toml::to_string_pretty(config).map_err(|e| {
-            sdrtrunk_monitor::MonitorError::configuration(format!(
-                "Failed to serialize configuration: {e}"
-            ))
-        })?;
-        println!("{config_toml}");
+        show_config(config)?;
     }
 
     Ok(())
 }
 
 /// Handle queue management commands
+///
+/// # Errors
+///
+/// Returns error if queue operation fails
 async fn handle_queue_command(action: QueueCommands, config: &MonitorConfig) -> Result<()> {
     match action {
         QueueCommands::Status => {
@@ -395,6 +454,10 @@ async fn handle_queue_command(action: QueueCommands, config: &MonitorConfig) -> 
 }
 
 /// Scan directory for existing files
+///
+/// # Errors
+///
+/// Returns error if directory cannot be scanned
 async fn scan_directory(
     directory: Option<PathBuf>,
     execute: bool,

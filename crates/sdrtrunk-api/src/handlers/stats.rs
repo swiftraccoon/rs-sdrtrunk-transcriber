@@ -267,7 +267,7 @@ pub async fn get_system_stats(
 
     // Get basic system stats from database
     let system_stats = match sdrtrunk_database::get_system_stats(&state.pool, &system_id).await {
-        Ok(stats) => stats,
+        Ok(system_stats) => system_stats,
         Err(e) => {
             error!("Failed to retrieve system stats: {}", e);
             return Err((
@@ -326,33 +326,15 @@ pub async fn get_system_stats(
 
     // Add optional detailed stats
     if query.include_talkgroups.unwrap_or(false) {
-        response.top_talkgroups = match get_talkgroup_stats(&state.pool, &system_id).await {
-            Ok(stats) => Some(stats),
-            Err(e) => {
-                warn!("Failed to get talkgroup stats: {}", e);
-                None
-            }
-        };
+        response.top_talkgroups = Some(get_talkgroup_stats(&state.pool, &system_id));
     }
 
     if query.include_sources.unwrap_or(false) {
-        response.upload_sources = match get_upload_source_stats(&state.pool, &system_id).await {
-            Ok(stats) => Some(stats),
-            Err(e) => {
-                warn!("Failed to get upload source stats: {}", e);
-                None
-            }
-        };
+        response.upload_sources = Some(get_upload_source_stats(&state.pool, &system_id));
     }
 
     if query.include_hourly.unwrap_or(false) {
-        response.hourly_distribution = match get_hourly_stats(&state.pool, &system_id).await {
-            Ok(stats) => Some(stats),
-            Err(e) => {
-                warn!("Failed to get hourly stats: {}", e);
-                None
-            }
-        };
+        response.hourly_distribution = Some(get_hourly_stats(&state.pool, &system_id));
     }
 
     info!(
@@ -425,7 +407,7 @@ pub async fn get_global_stats(
     };
 
     // Get storage stats
-    let storage_stats = calculate_storage_stats(&state.config.storage.base_dir).await;
+    let storage_stats = calculate_storage_stats(&state.config.storage.base_dir);
 
     let response = GlobalStatsResponse {
         total_systems: total_systems.try_into().unwrap_or(0),
@@ -458,6 +440,7 @@ async fn calculate_additional_metrics(
     .await
     .unwrap_or(0);
 
+    #[allow(clippy::cast_precision_loss)]
     let avg_calls_per_day = calls_last_7d as f64 / 7.0;
 
     Ok((
@@ -479,30 +462,21 @@ fn determine_activity_status(calls_this_hour: i32, calls_last_24h: i32) -> Activ
 }
 
 /// Get talkgroup statistics for a system
-async fn get_talkgroup_stats(
-    _pool: &sqlx::PgPool,
-    _system_id: &str,
-) -> Result<Vec<TalkgroupStats>, sdrtrunk_core::Error> {
+fn get_talkgroup_stats(_pool: &sqlx::PgPool, _system_id: &str) -> Vec<TalkgroupStats> {
     // This would query the database for talkgroup stats
     // Placeholder implementation
-    Ok(Vec::new())
+    Vec::new()
 }
 
 /// Get upload source statistics for a system
-async fn get_upload_source_stats(
-    _pool: &sqlx::PgPool,
-    _system_id: &str,
-) -> Result<Vec<UploadSourceStats>, sdrtrunk_core::Error> {
+fn get_upload_source_stats(_pool: &sqlx::PgPool, _system_id: &str) -> Vec<UploadSourceStats> {
     // This would query the database for upload source stats
     // Placeholder implementation
-    Ok(Vec::new())
+    Vec::new()
 }
 
 /// Get hourly call distribution for a system
-async fn get_hourly_stats(
-    _pool: &sqlx::PgPool,
-    _system_id: &str,
-) -> Result<Vec<HourlyStats>, sdrtrunk_core::Error> {
+fn get_hourly_stats(_pool: &sqlx::PgPool, _system_id: &str) -> Vec<HourlyStats> {
     // This would query the database for hourly distribution
     // Placeholder implementation
     let mut hourly_stats = Vec::new();
@@ -513,11 +487,11 @@ async fn get_hourly_stats(
             avg_duration: None,
         });
     }
-    Ok(hourly_stats)
+    hourly_stats
 }
 
 /// Calculate storage statistics
-async fn calculate_storage_stats(storage_path: &std::path::Path) -> StorageStats {
+fn calculate_storage_stats(storage_path: &std::path::Path) -> StorageStats {
     // This is a simplified implementation
     // In production, you might want to use more sophisticated file system analysis
     StorageStats {

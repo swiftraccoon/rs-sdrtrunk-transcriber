@@ -133,13 +133,22 @@ pub use types::{FileData, RadioCall, SystemId, TalkgroupId};
 ///
 /// Returns an error if the logging system cannot be initialized.
 pub fn init_logging() -> context_error::Result<()> {
-    use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
+    use tracing_subscriber::{fmt, layer::SubscriberExt, util::SubscriberInitExt};
 
     tracing_subscriber::registry()
         .with(
             tracing_subscriber::EnvFilter::try_from_default_env().unwrap_or_else(|_| "info".into()),
         )
-        .with(tracing_subscriber::fmt::layer().json())
+        .with(
+            fmt::layer()
+                .with_target(false)
+                .with_thread_ids(false)
+                .with_thread_names(false)
+                .with_file(false)
+                .with_line_number(false)
+                .with_level(true)
+                .compact(),
+        )
         .init();
 
     Ok(())

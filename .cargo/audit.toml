@@ -1,0 +1,4 @@
+[advisories]
+# sqlx pulls in sqlx-mysql even when only using postgres feature
+# This RSA vulnerability doesn't affect us since we don't use MySQL
+ignore = ["RUSTSEC-2023-0071"]

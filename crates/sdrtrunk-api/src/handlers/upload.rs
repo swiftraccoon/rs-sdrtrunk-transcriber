@@ -1,5 +1,6 @@
 //! File upload handler for Rdio-compatible call uploads
 
+use super::audio_utils;
 use crate::state::AppState;
 use axum::{
     body::Body,
@@ -62,20 +63,17 @@ pub async fn handle_call_upload(
     }
 
     // Try to extract multipart data from the request
-    let mut multipart = match Multipart::from_request(request, &state).await {
-        Ok(multipart) => multipart,
-        Err(_) => {
-            let (status, json_error) = upload_error(
-                &state,
-                client_ip,
-                user_agent,
-                None,
-                None,
-                "Failed to parse multipart data - invalid format",
-            )
-            .await;
-            return (status, json_error).into_response();
-        }
+    let Ok(mut multipart) = Multipart::from_request(request, &state).await else {
+        let (status, json_error) = upload_error(
+            &state,
+            client_ip,
+            user_agent,
+            None,
+            None,
+            "Failed to parse multipart data - invalid format",
+        )
+        .await;
+        return (status, json_error).into_response();
     };
 
     // Parse multipart form data with proper error handling
@@ -133,18 +131,18 @@ pub async fn handle_call_upload(
                         }
                     }
                     "dateTime" | "datetime" => {
-                        if let Ok(text) = field.text().await {
-                            if let Ok(ts) = text.parse::<i64>() {
-                                metadata.datetime =
-                                    Some(DateTime::from_timestamp(ts, 0).unwrap_or_else(Utc::now));
-                            }
+                        if let Ok(text) = field.text().await
+                            && let Ok(ts) = text.parse::<i64>()
+                        {
+                            metadata.datetime =
+                                Some(DateTime::from_timestamp(ts, 0).unwrap_or_else(Utc::now));
                         }
                     }
                     "talkgroup" => {
-                        if let Ok(text) = field.text().await {
-                            if let Ok(tg) = text.parse::<i32>() {
-                                metadata.talkgroup_id = Some(tg);
-                            }
+                        if let Ok(text) = field.text().await
+                            && let Ok(tg) = text.parse::<i32>()
+                        {
+                            metadata.talkgroup_id = Some(tg);
                         }
                     }
                     "talkgroupLabel" => {
@@ -163,17 +161,17 @@ pub async fn handle_call_upload(
                         }
                     }
                     "frequency" => {
-                        if let Ok(text) = field.text().await {
-                            if let Ok(freq) = text.parse::<i64>() {
-                                metadata.frequency = Some(freq);
-                            }
+                        if let Ok(text) = field.text().await
+                            && let Ok(freq) = text.parse::<i64>()
+                        {
+                            metadata.frequency = Some(freq);
                         }
                     }
                     "source" => {
-                        if let Ok(text) = field.text().await {
-                            if let Ok(src) = text.parse::<i32>() {
-                                metadata.source_radio_id = Some(src);
-                            }
+                        if let Ok(text) = field.text().await
+                            && let Ok(src) = text.parse::<i32>()
+                        {
+                            metadata.source_radio_id = Some(src);
                         }
                     }
                     "patches" => {
@@ -196,6 +194,14 @@ pub async fn handle_call_upload(
                             metadata.talker_alias = Some(text);
                         }
                     }
+                    "duration" => {
+                        // Handle duration if SDRTrunk ever sends it
+                        if let Ok(text) = field.text().await
+                            && let Ok(dur) = text.parse::<f64>()
+                        {
+                            metadata.duration = Some(dur);
+                        }
+                    }
                     _ => {
                         // Ignore unknown fields for compatibility
                         // Don't warn as SDRTrunk may send additional fields
@@ -215,7 +221,7 @@ pub async fn handle_call_upload(
                     user_agent,
                     None,
                     None,
-                    &format!("Invalid multipart data: {}", e),
+                    &format!("Invalid multipart data: {e}"),
                 )
                 .await;
                 return (status, json_error).into_response();
@@ -225,7 +231,11 @@ pub async fn handle_call_upload(
 
     // Handle test requests first - they don't require audio files
     if metadata.test.is_some() {
-        info!("Test request from system {:?}", metadata.system_id);
+        info!(
+            "🧪 TEST REQUEST: System {} | IP: {}",
+            metadata.system_id.as_deref().unwrap_or("Unknown"),
+            client_ip
+        );
 
         let message = "incomplete call data: no talkgroup";
 
@@ -246,15 +256,14 @@ pub async fn handle_call_upload(
                 })),
             )
                 .into_response();
-        } else {
-            // Return plain text response (default behavior) with explicit content-type
-            return Response::builder()
-                .status(StatusCode::OK)
-                .header("content-type", "text/plain")
-                .body(Body::from(message))
-                .unwrap()
-                .into_response();
         }
+        // Return plain text response (default behavior) with explicit content-type
+        return Response::builder()
+            .status(StatusCode::OK)
+            .header("content-type", "text/plain")
+            .body(Body::from(message))
+            .unwrap()
+            .into_response();
     }
 
     // For non-test requests, validate required fields
@@ -386,7 +395,7 @@ pub async fn handle_call_upload(
             user_agent,
             metadata.api_key,
             Some(system_id),
-            &format!("File extension '{}' is not allowed", file_extension),
+            &format!("File extension '{file_extension}' is not allowed"),
         )
         .await;
         return (status, json_error).into_response();
@@ -433,6 +442,11 @@ pub async fn handle_call_upload(
         return (status, json_error).into_response();
     }
 
+    // Calculate duration if not provided
+    let duration = metadata
+        .duration
+        .or_else(|| audio_utils::calculate_audio_duration(&audio, Some(&filename)));
+
     // Create RadioCall record
     let radio_call = RadioCall {
         id: None,
@@ -450,7 +464,7 @@ pub async fn handle_call_upload(
         audio_filename: Some(unique_filename.clone()),
         audio_file_path: Some(file_path.to_string_lossy().to_string()),
         audio_size_bytes: Some(audio.len() as i64),
-        duration_seconds: None, // Will be calculated later if needed
+        duration_seconds: duration,
         upload_ip: Some(client_ip.to_string()),
         upload_timestamp: Utc::now(),
         upload_api_key_id: api_key_id,
@@ -510,9 +524,37 @@ pub async fn handle_call_upload(
         warn!("Failed to log upload: {}", e);
     }
 
+    // Create formatted log with useful details
+    let talkgroup_info = if let Some(tg_id) = radio_call.talkgroup_id {
+        if let Some(ref label) = radio_call.talkgroup_label {
+            format!("TG {} ({})", tg_id, label)
+        } else {
+            format!("TG {}", tg_id)
+        }
+    } else {
+        "Unknown TG".to_string()
+    };
+
+    let freq_mhz = radio_call
+        .frequency
+        .map(|f| format!("{:.4} MHz", f as f64 / 1_000_000.0))
+        .unwrap_or_else(|| "Unknown Freq".to_string());
+
+    let duration_str = duration
+        .map(|d| format!("{:.2}s", d))
+        .unwrap_or_else(|| "N/A".to_string());
+
+    let file_size_kb = audio.len() as f64 / 1024.0;
+
     info!(
-        "Successfully uploaded call {} for system {}",
-        call_id, system_id
+        "📻 UPLOAD: {} | {} | {} | {} | {:.1}KB | {} | {}",
+        system_id,
+        talkgroup_info,
+        freq_mhz,
+        duration_str,
+        file_size_kb,
+        call_id.to_string().split('-').next().unwrap_or(""),
+        client_ip
     );
 
     // Check if client wants JSON response (like Python implementation)
@@ -553,7 +595,12 @@ async fn upload_error(
     system_id: Option<String>,
     error_message: &str,
 ) -> (StatusCode, Json<ErrorResponse>) {
-    error!("Upload error: {}", error_message);
+    error!(
+        "❌ UPLOAD FAILED: {} | System: {} | IP: {}",
+        error_message,
+        system_id.as_deref().unwrap_or("Unknown"),
+        client_ip
+    );
 
     // Log failed upload (best effort - don't fail if logging fails)
     let params = sdrtrunk_database::UploadLogParams {
@@ -594,6 +641,7 @@ struct CallMetadata {
     source_radio_id: Option<i32>,
     talker_alias: Option<String>,
     test: Option<i32>,
+    duration: Option<f64>, // Duration in seconds
     patches: Option<serde_json::Value>,
     sources: Option<serde_json::Value>,
     frequencies: Option<serde_json::Value>,

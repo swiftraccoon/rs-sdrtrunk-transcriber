@@ -15,10 +15,14 @@ pub use std::sync::OnceLock;
 ///
 /// ```
 /// use sdrtrunk_core::lazy_static;
+/// use std::collections::HashMap;
 ///
 /// lazy_static! {
-///     static ref CONFIG: Config = Config::load().unwrap();
+///     static ref CONFIG: HashMap<String, String> = HashMap::new();
 /// }
+///
+/// // Access the lazy static
+/// assert!(CONFIG.is_empty());
 /// ```
 #[macro_export]
 macro_rules! lazy_static {
@@ -34,10 +38,13 @@ macro_rules! lazy_static {
 /// # Examples
 ///
 /// ```
-/// use sdrtrunk_core::lazy::lazy;
+/// use sdrtrunk_core::lazy::LazyLock;
 /// use std::collections::HashMap;
 ///
-/// static CACHE: LazyLock<HashMap<String, i32>> = lazy(HashMap::new);
+/// static CACHE: LazyLock<HashMap<String, i32>> = LazyLock::new(HashMap::new);
+///
+/// // Access the lazy static
+/// assert!(CACHE.is_empty());
 /// ```
 #[must_use]
 pub fn lazy<T>(init: fn() -> T) -> LazyLock<T> {

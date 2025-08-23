@@ -6,6 +6,10 @@ edition.workspace = true
 license.workspace = true
 rust-version.workspace = true
 description = "REST API server for SDRTrunk transcriber"
+repository = "https://github.com/swiftraccoon/rs-sdrtrunk-transcriber"
+readme = "../../README.md"
+keywords = ["sdr", "api", "rest", "axum", "transcription"]
+categories = ["web-programming", "multimedia"]
 
 [[bin]]
 name = "sdrtrunk-api-server"
@@ -18,7 +22,6 @@ sdrtrunk-database = { path = "../sdrtrunk-database" }
 
 # Web framework
 axum = { version = "0.7", features = ["macros", "multipart", "ws"] }
-axum-extra = { version = "0.9", features = ["typed-header"] }
 tower = { version = "0.5", features = ["full"] }
 tower-http = { version = "0.6", features = ["fs", "cors", "trace", "compression-gzip", "timeout", "limit"] }
 
@@ -36,9 +39,6 @@ validator = { version = "0.19", features = ["derive"] }
 # utoipa = { version = "4.2", features = ["axum_extras", "chrono", "uuid"] }
 # utoipa-swagger-ui = { version = "7.1", features = ["axum"] }
 
-# Multipart handling
-multer = "3.1"
-
 # Metrics (simplified - could use a lighter solution)
 # prometheus = "0.13"
 
@@ -47,11 +47,9 @@ chrono = { version = "0.4", features = ["serde"] }
 
 # Utilities
 uuid = { version = "1.11", features = ["v4", "serde"] }
-bytes = "1.8"
 
 # Logging
 tracing = "0.1"
-tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
 
 # Error handling (uses sdrtrunk-core custom implementations)
 
@@ -75,9 +73,6 @@ http = "1.0"
 
 # Dashboard/map for in-memory storage
 dashmap = "6.1"
-
-# Better panic messages
-better-panic = "0.3"
 
 # Direct access to sqlx types
 sqlx = { version = "0.8", features = ["runtime-tokio", "postgres", "uuid", "chrono", "migrate", "json", "ipnetwork", "rust_decimal"] }

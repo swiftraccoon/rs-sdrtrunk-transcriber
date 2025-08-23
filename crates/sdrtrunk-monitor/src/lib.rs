@@ -1,4 +1,4 @@
-//! File monitoring service for SDRTrunk transcriber
+//! File monitoring service for `SDRTrunk` transcriber
 //!
 //! This crate provides a high-performance, cross-platform file monitoring service
 //! that watches for new MP3 files and triggers processing workflows. The service
@@ -29,12 +29,26 @@ pub use queue::{FileQueue, QueuedFile};
 pub use service::MonitorService;
 
 /// Initialize the monitoring service with default configuration
+///
+/// # Errors
+///
+/// Returns [`MonitorError`] if:
+/// - Configuration loading fails
+/// - Database connection cannot be established
+/// - Required directories cannot be created
 pub async fn init() -> Result<MonitorService> {
     let config = MonitorConfig::load()?;
     MonitorService::new(config).await
 }
 
 /// Initialize the monitoring service with custom configuration
+///
+/// # Errors
+///
+/// Returns [`MonitorError`] if:
+/// - Database connection cannot be established
+/// - Required directories cannot be created
+/// - Invalid configuration parameters
 pub async fn init_with_config(config: MonitorConfig) -> Result<MonitorService> {
     MonitorService::new(config).await
 }

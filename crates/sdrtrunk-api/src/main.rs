@@ -1,4 +1,4 @@
-//! Main entry point for the SDRTrunk API server
+//! Main entry point for the `SDRTrunk` API server
 
 use sdrtrunk_api::build_router;
 use sdrtrunk_core::{Config, context_error, context_error::Result, init_logging};
@@ -14,7 +14,7 @@ async fn main() -> Result<()> {
     // Load .env file if it exists (for development convenience)
     if let Err(e) = dotenvy::dotenv() {
         // It's okay if .env doesn't exist, just log it at debug level
-        eprintln!("Note: .env file not loaded: {}", e);
+        eprintln!("Note: .env file not loaded: {e}");
     }
 
     // Initialize logging first
@@ -26,16 +26,22 @@ async fn main() -> Result<()> {
         Config::default()
     });
 
+    info!("╔══════════════════════════════════════════════════════════╗");
     info!(
-        "Starting SDRTrunk API Server on {}:{}",
+        "║       SDRTrunk Transcriber API Server v{}             ║",
+        env!("CARGO_PKG_VERSION")
+    );
+    info!("╚══════════════════════════════════════════════════════════╝");
+    info!(
+        "🚀 Starting server on {}:{}",
         config.server.host, config.server.port
     );
 
     // Initialize database connection
-    info!("Connecting to database...");
+    info!("🔌 Connecting to database...");
     let database = match Database::new(&config).await {
         Ok(db) => {
-            info!("Database connection established");
+            info!("✅ Database connection established");
             db
         }
         Err(e) => {
@@ -45,24 +51,23 @@ async fn main() -> Result<()> {
     };
 
     // Run database migrations
-    info!("Running database migrations...");
+    info!("🔄 Running database migrations...");
     if let Err(e) = database.migrate().await {
         error!("Database migration failed: {}", e);
         return Err(context_error!("Migration failed: {}", e));
     }
-    info!("Database migrations completed");
+    info!("✅ Database migrations completed");
 
     // Perform database health check
     if let Err(e) = database.health_check().await {
         error!("Database health check failed: {}", e);
         return Err(context_error!("Database health check failed: {}", e));
     }
-    info!("Database health check passed");
+    info!("✅ Database health check passed");
 
     // Build the application router
-    info!("Building application routes...");
-    let app = build_router(config.clone(), database.pool().clone())
-        .await?
+    info!("🛠️  Building application routes...");
+    let app = build_router(config.clone(), database.pool().clone())?
         .layer(ServiceBuilder::new().layer(TraceLayer::new_for_http()));
 
     // Create server address
@@ -75,9 +80,13 @@ async fn main() -> Result<()> {
         .await
         .map_err(|e| context_error!("Failed to bind to {}: {}", addr, e))?;
 
-    info!("Server listening on http://{}", addr);
-    info!("Health check available at: http://{}/health", addr);
-    info!("API documentation at: http://{}/api/docs", addr);
+    info!("╔══════════════════════════════════════════════════════════╗");
+    info!("║                     SERVER READY                         ║");
+    info!("╟──────────────────────────────────────────────────────────╢");
+    info!("║ 🌐 API:     http://{:12}", addr);
+    info!("║ 💚 Health:  http://{:12}/health", addr);
+    info!("║ 📚 Docs:    http://{:12}/api/docs", addr);
+    info!("╚══════════════════════════════════════════════════════════╝\n");
 
     // Start the server with graceful shutdown
     axum::serve(
@@ -88,7 +97,7 @@ async fn main() -> Result<()> {
     .await
     .map_err(|e| context_error!("Server error: {}", e))?;
 
-    info!("Server shutdown complete");
+    info!("👋 Server shutdown complete");
     Ok(())
 }
 
@@ -112,10 +121,10 @@ async fn shutdown_signal() {
     let terminate = std::future::pending::<()>();
 
     tokio::select! {
-        _ = ctrl_c => {
+        () = ctrl_c => {
             info!("Received Ctrl+C, shutting down gracefully...");
         },
-        _ = terminate => {
+        () = terminate => {
             info!("Received terminate signal, shutting down gracefully...");
         },
     }

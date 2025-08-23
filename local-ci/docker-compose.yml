@@ -1,0 +1,71 @@
+services:
+  # PostgreSQL test database
+  postgres:
+    build:
+      context: .
+      dockerfile: containers/Containerfile.postgres
+    container_name: ci-postgres
+    environment:
+      POSTGRES_USER: sdrtrunk_test
+      POSTGRES_PASSWORD: test_password
+      POSTGRES_DB: sdrtrunk_test
+    ports:
+      - "5433:5432"  # Use 5433 to avoid conflict with local postgres
+    volumes:
+      - ./config/init-test-db.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U sdrtrunk_test -d sdrtrunk_test"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+    networks:
+      - ci-network
+
+  # CI runner container
+  ci-runner:
+    build:
+      context: .
+      dockerfile: containers/Containerfile.ci
+    container_name: ci-runner
+    depends_on:
+      postgres:
+        condition: service_healthy
+    mem_limit: 24g
+    memswap_limit: 32g
+    environment:
+      # Database connection for tests
+      TEST_DATABASE_URL: postgresql://sdrtrunk_test:test_password@postgres:5432/sdrtrunk_test
+      DATABASE_URL: postgresql://sdrtrunk_test:test_password@postgres:5432/sdrtrunk_test
+      # Rust settings
+      CARGO_TERM_COLOR: always
+      RUST_BACKTRACE: 1
+      RUSTFLAGS: "-D warnings"
+      # Limit parallel compilation to reduce memory usage
+      CARGO_BUILD_JOBS: "6"
+      CARGO_NET_RETRY: "10"
+      # Optional flags
+      RUN_COVERAGE: "${RUN_COVERAGE:-false}"
+      RUN_BENCHMARKS: "${RUN_BENCHMARKS:-false}"
+      RUN_MIRI: "${RUN_MIRI:-false}"
+    volumes:
+      # Mount the entire project
+      - ..:/workspace:rw,z
+      # Mount the CI scripts
+      - ./scripts:/workspace/local-ci/scripts:ro
+      # Cache cargo registry
+      - cargo-cache:/usr/local/cargo/registry
+      - cargo-git:/usr/local/cargo/git
+      - target-cache:/workspace/target
+    working_dir: /workspace
+    command: /workspace/local-ci/scripts/run-ci-checks.sh
+    networks:
+      - ci-network
+
+networks:
+  ci-network:
+    driver: bridge
+
+volumes:
+  cargo-cache:
+  cargo-git:
+  target-cache:

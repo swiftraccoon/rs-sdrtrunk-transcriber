@@ -6,6 +6,10 @@ edition.workspace = true
 license.workspace = true
 rust-version.workspace = true
 description = "File monitoring service for SDRTrunk transcriber"
+repository = "https://github.com/swiftraccoon/rs-sdrtrunk-transcriber"
+readme = "../../README.md"
+keywords = ["sdr", "monitor", "file-watcher", "transcription", "audio"]
+categories = ["filesystem", "multimedia"]
 
 [dependencies]
 # Internal dependencies
@@ -14,8 +18,6 @@ sdrtrunk-database = { path = "../sdrtrunk-database" }
 
 # Async runtime
 tokio = { workspace = true }
-tokio-util = { workspace = true }
-futures = { workspace = true }
 
 # File system monitoring
 notify = { workspace = true }
@@ -40,13 +42,8 @@ time = { workspace = true }
 
 # Utilities
 uuid = { workspace = true }
-bytes = { workspace = true }
-crossbeam = { workspace = true }
 parking_lot = { workspace = true }
 dashmap = { workspace = true }
-
-# File I/O
-memmap2 = { workspace = true }
 
 # Configuration
 config = { workspace = true }

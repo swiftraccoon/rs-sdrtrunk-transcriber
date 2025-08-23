@@ -1,4 +1,4 @@
-# Rust SDRTrunk Transcriber
+# (W.I.P.) Rust SDRTrunk Transcriber
 
 [![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)](https://www.gnu.org/licenses/gpl-3.0)
 [![Rust](https://img.shields.io/badge/rust-1.85.0%2B-orange.svg)](https://www.rust-lang.org)
@@ -23,7 +23,7 @@ See [ARCHITECTURE.md](ARCHITECTURE.md) for complete system design and technical 
 
 This project maintains strict quality standards:
 
-- Rust 1.85.0 with Edition 2024
+- Rust 1.89.0 with Edition 2024
 - 90% minimum test coverage
 - Zero unsafe code policy
 - Comprehensive CI/CD pipeline
@@ -33,9 +33,8 @@ This project maintains strict quality standards:
 
 ### Prerequisites
 
-- Rust 1.85.0 or later
+- Rust 1.89.0
 - PostgreSQL 15+
-- Redis 7+
 - FFmpeg
 - Docker (optional, for containerized deployment)
 
@@ -72,7 +71,6 @@ cp config.example.toml config.toml
 Key configuration options:
 
 - Database connection settings
-- Redis connection settings
 - WhisperX service URL
 - Icecast streaming configuration
 - API authentication keys

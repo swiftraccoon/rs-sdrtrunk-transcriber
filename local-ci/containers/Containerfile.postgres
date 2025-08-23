@@ -1,0 +1,14 @@
+# PostgreSQL container for testing
+FROM postgres:17-alpine
+
+# Set up test database
+ENV POSTGRES_USER=sdrtrunk_test
+ENV POSTGRES_PASSWORD=test_password
+ENV POSTGRES_DB=sdrtrunk_test
+
+# Copy initialization scripts
+COPY config/init-test-db.sql /docker-entrypoint-initdb.d/
+
+# Health check
+HEALTHCHECK --interval=5s --timeout=3s --start-period=10s --retries=5 \
+    CMD pg_isready -U sdrtrunk_test -d sdrtrunk_test || exit 1

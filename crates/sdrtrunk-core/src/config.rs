@@ -12,9 +12,6 @@ pub struct Config {
     /// Database configuration
     pub database: DatabaseConfig,
 
-    /// Redis configuration
-    pub redis: RedisConfig,
-
     /// File storage configuration
     pub storage: StorageConfig,
 
@@ -69,17 +66,6 @@ pub struct DatabaseConfig {
     /// Idle timeout in seconds
     #[serde(default = "default_idle_timeout")]
     pub idle_timeout: u64,
-}
-
-/// Redis configuration
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct RedisConfig {
-    /// Redis URL
-    pub url: String,
-
-    /// Connection pool size
-    #[serde(default = "default_pool_size")]
-    pub pool_size: u32,
 }
 
 /// Storage configuration
@@ -188,10 +174,6 @@ const fn default_connect_timeout() -> u64 {
 
 const fn default_idle_timeout() -> u64 {
     600
-}
-
-const fn default_pool_size() -> u32 {
-    20
 }
 
 fn default_upload_dir() -> String {
@@ -310,10 +292,6 @@ impl Default for Config {
                 connect_timeout: default_connect_timeout(),
                 idle_timeout: default_idle_timeout(),
             },
-            redis: RedisConfig {
-                url: "redis://localhost".to_string(),
-                pool_size: default_pool_size(),
-            },
             storage: StorageConfig {
                 base_dir: PathBuf::from(
                     std::env::var("SDRTRUNK_STORAGE_BASE_DIR")
@@ -371,9 +349,6 @@ mod tests {
         assert!(config.database.url.contains("postgresql"));
         assert_eq!(config.database.max_connections, 50);
         assert_eq!(config.database.min_connections, 5);
-
-        assert_eq!(config.redis.url, "redis://localhost");
-        assert_eq!(config.redis.pool_size, 20);
 
         assert_eq!(config.storage.upload_dir, "uploads");
         assert_eq!(config.storage.max_file_size, 100_000_000);
@@ -576,7 +551,6 @@ mod tests {
         assert_eq!(default_min_connections(), 5);
         assert_eq!(default_connect_timeout(), 30);
         assert_eq!(default_idle_timeout(), 600);
-        assert_eq!(default_pool_size(), 20);
         assert_eq!(default_upload_dir(), "uploads");
         assert_eq!(default_max_file_size(), 100_000_000);
         assert_eq!(default_allowed_extensions(), vec!["mp3", "wav", "flac"]);
@@ -599,7 +573,6 @@ mod tests {
         let json_str = r#"{
             "server": {"host": "localhost"},
             "database": {"url": "postgresql://test"},
-            "redis": {"url": "redis://test"},
             "storage": {"base_dir": "/tmp"},
             "api": {},
             "security": {},
@@ -636,10 +609,10 @@ mod tests {
             assert!(log_file.to_str().is_some());
         }
 
-        if let Some(monitor) = &config.monitor {
-            if let Some(watch_dir) = &monitor.watch_directory {
-                assert!(watch_dir.to_str().is_some());
-            }
+        if let Some(monitor) = &config.monitor
+            && let Some(watch_dir) = &monitor.watch_directory
+        {
+            assert!(watch_dir.to_str().is_some());
         }
     }
 
@@ -657,8 +630,6 @@ mod tests {
         assert!(config.database.max_connections >= config.database.min_connections);
         assert!(config.database.connect_timeout > 0);
         assert!(config.database.idle_timeout > 0);
-
-        assert!(config.redis.pool_size > 0);
 
         assert!(config.storage.max_file_size > 0);
         assert!(!config.storage.allowed_extensions.is_empty());
@@ -687,10 +658,6 @@ mod tests {
                 min_connections: 20,
                 connect_timeout: 45,
                 idle_timeout: 900,
-            },
-            redis: RedisConfig {
-                url: "redis://redis.example.com:6379/1".to_string(),
-                pool_size: 50,
             },
             storage: StorageConfig {
                 base_dir: PathBuf::from("/data/sdrtrunk"),
@@ -740,9 +707,6 @@ mod tests {
 
         assert!(deserialized.database.url.contains("db.example.com"));
         assert_eq!(deserialized.database.max_connections, 200);
-
-        assert!(deserialized.redis.url.contains("redis.example.com"));
-        assert_eq!(deserialized.redis.pool_size, 50);
 
         assert_eq!(
             deserialized.storage.base_dir,

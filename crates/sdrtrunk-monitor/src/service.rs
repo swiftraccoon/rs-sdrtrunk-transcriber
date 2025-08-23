@@ -13,8 +13,11 @@ use crate::{
 use dashmap::DashMap;
 use parking_lot::RwLock;
 use sqlx::PgPool;
-use std::sync::{Arc, atomic::AtomicU64};
+use std::sync::Arc;
 use std::time::Duration;
+
+/// Task handles type alias
+type TaskHandles = Arc<RwLock<Vec<JoinHandle<()>>>>;
 use tokio::{
     sync::{Notify, broadcast, mpsc},
     task::JoinHandle,
@@ -113,7 +116,7 @@ pub struct MonitorService {
     metrics: Arc<RwLock<ServiceMetrics>>,
 
     /// Running task handles
-    task_handles: Arc<RwLock<Vec<JoinHandle<()>>>>,
+    task_handles: TaskHandles,
 
     /// Shutdown signal
     shutdown_notify: Arc<Notify>,
@@ -129,13 +132,18 @@ pub struct MonitorService {
 
     /// Processing statistics
     processing_times: Arc<DashMap<Uuid, Duration>>,
-
-    /// Restart attempt counter
-    _restart_attempts: AtomicU64,
 }
 
 impl MonitorService {
     /// Create a new monitoring service
+    ///
+    /// # Errors
+    ///
+    /// Returns [`MonitorError`] if:
+    /// - Cannot connect to the database
+    /// - Database connection test fails
+    /// - Cannot create required directories
+    /// - Queue persistence loading fails
     pub async fn new(config: MonitorConfig) -> Result<Self> {
         info!("Initializing monitoring service");
 
@@ -197,7 +205,6 @@ impl MonitorService {
             status: Arc::new(RwLock::new(ServiceStatus::Stopped)),
             start_time: Arc::new(RwLock::new(None)),
             processing_times: Arc::new(DashMap::new()),
-            _restart_attempts: AtomicU64::new(0),
         };
 
         info!("Monitoring service initialized successfully");
@@ -205,6 +212,17 @@ impl MonitorService {
     }
 
     /// Start the monitoring service
+    ///
+    /// # Errors
+    ///
+    /// Returns [`MonitorError`] if:
+    /// - Service is already running
+    /// - Cannot start file monitor
+    /// - Cannot scan existing files
+    /// - Cannot start monitoring workers
+    #[allow(clippy::future_not_send)]
+    #[allow(clippy::await_holding_lock)]
+    #[allow(clippy::significant_drop_tightening)]
     #[instrument(skip(self))]
     pub async fn start(&self) -> Result<()> {
         let mut status = self.status.write();
@@ -267,6 +285,7 @@ impl MonitorService {
         if self.file_queue.persistence_file.is_some() {
             handles.push(self.spawn_persistence_task());
         }
+        drop(handles);
 
         // Update status
         *self.status.write() = ServiceStatus::Running;
@@ -281,6 +300,12 @@ impl MonitorService {
     }
 
     /// Stop the monitoring service
+    ///
+    /// # Errors
+    ///
+    /// Returns [`MonitorError`] if persistence saving fails
+    #[allow(clippy::future_not_send)]
+    #[allow(clippy::await_holding_lock)]
     #[instrument(skip(self))]
     pub async fn stop(&self) -> Result<()> {
         let mut status = self.status.write();
@@ -306,8 +331,13 @@ impl MonitorService {
             }
 
             // Wait for all tasks to complete
-            let mut handles = self.task_handles.write();
-            for handle in handles.drain(..) {
+            let handles = {
+                let mut h = self.task_handles.write();
+                let handles: Vec<_> = h.drain(..).collect();
+                drop(h);
+                handles
+            };
+            for handle in handles {
                 let _ = handle.await;
             }
         })
@@ -342,7 +372,8 @@ impl MonitorService {
         let mut metrics = self.metrics.read().clone();
 
         // Update uptime
-        if let Some(start_time) = *self.start_time.read() {
+        let start_time = *self.start_time.read();
+        if let Some(start_time) = start_time {
             metrics.uptime_seconds = start_time.elapsed().as_secs();
         }
 
@@ -376,14 +407,11 @@ impl MonitorService {
             loop {
                 tokio::select! {
                     event = event_receiver.recv() => {
-                        match event {
-                            Some(event) => {
-                                Self::handle_file_event(event, &file_queue, &metrics).await;
-                            }
-                            None => {
-                                debug!("File event receiver closed");
-                                break;
-                            }
+                        if let Some(event) = event {
+                            Self::handle_file_event(event, &file_queue, &metrics).await;
+                        } else {
+                            debug!("File event receiver closed");
+                            break;
                         }
                     }
                     _ = shutdown_rx.recv() => {
@@ -396,6 +424,7 @@ impl MonitorService {
     }
 
     /// Handle a single file event
+    #[allow(clippy::cognitive_complexity)]
     async fn handle_file_event(
         event: FileEvent,
         file_queue: &FileQueue,
@@ -455,6 +484,8 @@ impl MonitorService {
     }
 
     /// Spawn file processing worker task
+    /// Spawn a processing worker
+    #[allow(clippy::too_many_lines)]
     fn spawn_processing_worker(&self, worker_id: usize) -> JoinHandle<()> {
         let file_queue = self.file_queue.clone();
         let file_processor = self.file_processor.clone();
@@ -472,7 +503,7 @@ impl MonitorService {
             loop {
                 tokio::select! {
                     _ = interval.tick() => {
-                        if let Some(file) = file_queue.dequeue().await {
+                        if let Some(file) = file_queue.dequeue() {
                             debug!(
                                 worker_id,
                                 file_id = %file.id,
@@ -571,8 +602,11 @@ impl MonitorService {
                     _ = interval.tick() => {
                         let health_ok = Self::perform_health_check(&db_pool).await;
 
-                        let mut m = metrics.write();
-                        m.last_health_check = Some(chrono::Utc::now());
+                        {
+                            let mut m = metrics.write();
+                            m.last_health_check = Some(chrono::Utc::now());
+                            drop(m);
+                        }
 
                         if !health_ok {
                             warn!("Health check failed");
@@ -642,8 +676,11 @@ impl MonitorService {
         // Calculate average processing time
         if !processing_times.is_empty() {
             let total_time: Duration = processing_times.iter().map(|entry| *entry.value()).sum();
-            m.avg_processing_time_ms =
-                total_time.as_millis() as f64 / processing_times.len() as f64;
+            #[allow(clippy::cast_precision_loss)]
+            {
+                m.avg_processing_time_ms =
+                    total_time.as_millis() as f64 / processing_times.len() as f64;
+            }
 
             // Clean up old processing times to prevent memory leak
             if processing_times.len() > 1000 {
@@ -712,6 +749,11 @@ mod tests {
     use tempfile::TempDir;
 
     #[tokio::test]
+    /// Test service lifecycle
+    ///
+    /// # Panics
+    ///
+    /// Panics if test setup fails (temp directory creation, service operations)
     async fn test_service_lifecycle() {
         let temp_dir = TempDir::new().unwrap();
 

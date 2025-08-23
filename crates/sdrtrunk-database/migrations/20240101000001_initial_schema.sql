@@ -33,6 +33,8 @@ CREATE TABLE IF NOT EXISTS radio_calls (
     transcription_confidence DECIMAL(5,4),
     transcription_language VARCHAR(10),
     transcription_status VARCHAR(20) DEFAULT 'pending',
+    transcription_started_at TIMESTAMPTZ,
+    transcription_completed_at TIMESTAMPTZ,
     speaker_segments JSONB,
     speaker_count INTEGER,
     

@@ -298,7 +298,7 @@ mod tests {
             assert!(generated.len() > 10);
 
             if original.contains('.') {
-                let expected_ext = original.split('.').last().unwrap();
+                let expected_ext = original.split('.').next_back().unwrap();
                 assert!(generated.ends_with(&format!(".{expected_ext}")));
             } else {
                 assert!(generated.ends_with(".mp3")); // Default extension

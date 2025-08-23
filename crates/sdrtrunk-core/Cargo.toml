@@ -6,6 +6,10 @@ edition.workspace = true
 license.workspace = true
 rust-version.workspace = true
 description = "Core types and utilities for SDRTrunk transcriber"
+repository = "https://github.com/swiftraccoon/rs-sdrtrunk-transcriber"
+readme = "../../README.md"
+keywords = ["sdr", "radio", "transcription", "audio", "core"]
+categories = ["multimedia", "parsing"]
 
 [dependencies]
 # Serialization
@@ -18,7 +22,6 @@ serde_json = "1.0"
 chrono = { version = "0.4", features = ["serde"] }
 
 # Logging
-tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
 
 # Configuration
@@ -26,7 +29,6 @@ config = "0.14"
 
 # Utilities
 uuid = { version = "1.11", features = ["v4", "serde"] }
-bytes = "1.8"
 num_cpus = "1.16"
 
 # Validation

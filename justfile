@@ -204,6 +204,22 @@ update:
     cargo update
     @echo "✅ Update complete!"
 
+# Run local CI in containers (with test database)
+ci-local:
+    ./check-ci.sh
+
+# Quick local CI check
+ci-quick:
+    ./check-ci.sh --quick
+
+# Full local CI with coverage
+ci-full:
+    ./check-ci.sh --coverage --benchmarks
+
+# Clean and rebuild CI containers
+ci-clean:
+    ./check-ci.sh --clean
+
 # Create a new crate in the workspace
 new-crate name:
     cargo new --lib crates/{{name}}

@@ -321,7 +321,7 @@ pub async fn get_call(
             return Err((
                 StatusCode::NOT_FOUND,
                 Json(ErrorResponse {
-                    error: format!("Call {} not found", call_id),
+                    error: format!("Call {call_id} not found"),
                     code: "CALL_NOT_FOUND".to_string(),
                     details: None,
                 }),
@@ -399,7 +399,7 @@ pub async fn get_call_audio(
             return Err((
                 StatusCode::NOT_FOUND,
                 Json(ErrorResponse {
-                    error: format!("Call {} not found", call_id),
+                    error: format!("Call {call_id} not found"),
                     code: "CALL_NOT_FOUND".to_string(),
                     details: None,
                 }),

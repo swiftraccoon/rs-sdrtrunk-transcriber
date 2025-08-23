@@ -153,27 +153,27 @@ impl MonitorError {
 impl fmt::Display for MonitorError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            MonitorError::Watcher { message } => write!(f, "File system watcher error: {message}"),
-            MonitorError::Processing { path, message } => {
+            Self::Watcher { message } => write!(f, "File system watcher error: {message}"),
+            Self::Processing { path, message } => {
                 write!(f, "File processing error for {}: {message}", path.display())
             }
-            MonitorError::Database(err) => write!(f, "Database error: {err}"),
-            MonitorError::Io(err) => write!(f, "I/O error: {err}"),
-            MonitorError::Configuration { message } => write!(f, "Configuration error: {message}"),
-            MonitorError::Queue { message } => write!(f, "Queue error: {message}"),
-            MonitorError::ServiceNotRunning => write!(f, "Monitor service is not running"),
-            MonitorError::ServiceAlreadyRunning => write!(f, "Monitor service is already running"),
-            MonitorError::InvalidFile { path, reason } => {
+            Self::Database(err) => write!(f, "Database error: {err}"),
+            Self::Io(err) => write!(f, "I/O error: {err}"),
+            Self::Configuration { message } => write!(f, "Configuration error: {message}"),
+            Self::Queue { message } => write!(f, "Queue error: {message}"),
+            Self::ServiceNotRunning => write!(f, "Monitor service is not running"),
+            Self::ServiceAlreadyRunning => write!(f, "Monitor service is already running"),
+            Self::InvalidFile { path, reason } => {
                 write!(f, "Invalid file format for {}: {reason}", path.display())
             }
-            MonitorError::FileAlreadyProcessed { path } => {
+            Self::FileAlreadyProcessed { path } => {
                 write!(f, "File already processed: {}", path.display())
             }
-            MonitorError::Archive { path, message } => {
+            Self::Archive { path, message } => {
                 write!(f, "Archive error for {}: {message}", path.display())
             }
-            MonitorError::Timeout { operation } => write!(f, "Operation timed out: {operation}"),
-            MonitorError::Shutdown { message } => write!(f, "Shutdown error: {message}"),
+            Self::Timeout { operation } => write!(f, "Operation timed out: {operation}"),
+            Self::Shutdown { message } => write!(f, "Shutdown error: {message}"),
         }
     }
 }
@@ -181,8 +181,8 @@ impl fmt::Display for MonitorError {
 impl StdError for MonitorError {
     fn source(&self) -> Option<&(dyn StdError + 'static)> {
         match self {
-            MonitorError::Database(err) => Some(err),
-            MonitorError::Io(err) => Some(err),
+            Self::Database(err) => Some(err),
+            Self::Io(err) => Some(err),
             _ => None,
         }
     }
@@ -191,12 +191,12 @@ impl StdError for MonitorError {
 // From implementations for automatic conversions
 impl From<sqlx::Error> for MonitorError {
     fn from(err: sqlx::Error) -> Self {
-        MonitorError::Database(err)
+        Self::Database(err)
     }
 }
 
 impl From<std::io::Error> for MonitorError {
     fn from(err: std::io::Error) -> Self {
-        MonitorError::Io(err)
+        Self::Io(err)
     }
 }

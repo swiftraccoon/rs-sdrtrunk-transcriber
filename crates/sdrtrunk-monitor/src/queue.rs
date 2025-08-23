@@ -126,6 +126,7 @@ pub struct FileQueue {
 
 impl FileQueue {
     /// Create a new file queue
+    #[must_use]
     pub fn new(
         max_size: usize,
         persistence_file: Option<PathBuf>,
@@ -152,29 +153,45 @@ impl FileQueue {
     }
 
     /// Load queue state from persistence file
+    ///
+    /// # Errors
+    ///
+    /// Returns [`MonitorError`] if:
+    /// - File cannot be read
+    /// - JSON deserialization fails
     pub async fn load_from_persistence(&self) -> Result<()> {
-        if let Some(ref persistence_file) = self.persistence_file {
-            if persistence_file.exists() {
-                tracing::info!("Loading queue state from {}", persistence_file.display());
+        if let Some(ref persistence_file) = self.persistence_file
+            && persistence_file.exists()
+        {
+            tracing::info!("Loading queue state from {}", persistence_file.display());
 
-                let data = fs::read_to_string(persistence_file).await?;
-                let saved_files: Vec<QueuedFile> = serde_json::from_str(&data).map_err(|e| {
-                    MonitorError::queue(format!("Failed to parse persistence file: {e}"))
-                })?;
+            let data = fs::read_to_string(persistence_file).await?;
+            let saved_files: Vec<QueuedFile> = serde_json::from_str(&data).map_err(|e| {
+                MonitorError::queue(format!("Failed to parse persistence file: {e}"))
+            })?;
 
+            {
                 let mut pending = self.pending.write();
+                let num_files = saved_files.len();
                 for file in saved_files {
                     pending.push(file);
                 }
+                drop(pending);
 
-                self.update_stats().await;
-                tracing::info!("Loaded {} files from persistence", pending.len());
+                self.update_stats();
+                tracing::info!("Loaded {} files from persistence", num_files);
             }
         }
         Ok(())
     }
 
     /// Save queue state to persistence file
+    ///
+    /// # Errors
+    ///
+    /// Returns [`MonitorError`] if:
+    /// - File cannot be written
+    /// - JSON serialization fails
     pub async fn save_to_persistence(&self) -> Result<()> {
         if let Some(ref persistence_file) = self.persistence_file {
             let files = {
@@ -197,6 +214,13 @@ impl FileQueue {
     }
 
     /// Add a file to the processing queue
+    ///
+    /// # Errors
+    ///
+    /// Returns [`MonitorError`] if:
+    /// - Queue is at maximum capacity
+    /// - File metadata cannot be read
+    /// - Persistence saving fails
     pub async fn enqueue(&self, path: PathBuf) -> Result<Uuid> {
         // Check if queue is full
         if self.pending.read().len() >= self.max_size {
@@ -261,14 +285,14 @@ impl FileQueue {
             "Enqueued file for processing"
         );
 
-        self.update_stats().await;
+        self.update_stats();
         self.save_to_persistence().await?;
 
         Ok(id)
     }
 
     /// Get the next file to process
-    pub async fn dequeue(&self) -> Option<QueuedFile> {
+    pub fn dequeue(&self) -> Option<QueuedFile> {
         let file = {
             let mut pending = self.pending.write();
             pending.pop()
@@ -284,7 +308,7 @@ impl FileQueue {
                 "Dequeued file for processing"
             );
 
-            self.update_stats().await;
+            self.update_stats();
             Some(file)
         } else {
             None
@@ -292,6 +316,10 @@ impl FileQueue {
     }
 
     /// Mark a file as successfully processed
+    ///
+    /// # Errors
+    ///
+    /// Returns [`MonitorError`] if persistence saving fails
     pub async fn mark_completed(&self, file_id: Uuid) -> Result<()> {
         if let Some((_, file)) = self.processing.remove(&file_id) {
             tracing::debug!(
@@ -306,7 +334,7 @@ impl FileQueue {
                 stats.total_processed += 1;
             }
 
-            self.update_stats().await;
+            self.update_stats();
             self.save_to_persistence().await?;
             Ok(())
         } else {
@@ -317,6 +345,11 @@ impl FileQueue {
     }
 
     /// Mark a file as failed and optionally retry
+    /// Mark a file as failed processing
+    ///
+    /// # Errors
+    ///
+    /// Returns [`MonitorError`] if persistence saving fails
     pub async fn mark_failed(
         &self,
         file_id: Uuid,
@@ -353,7 +386,7 @@ impl FileQueue {
                 );
             }
 
-            self.update_stats().await;
+            self.update_stats();
             self.save_to_persistence().await?;
             Ok(should_retry)
         } else {
@@ -370,6 +403,7 @@ impl FileQueue {
     }
 
     /// Get all files currently being processed
+    #[must_use]
     pub fn processing_files(&self) -> Vec<QueuedFile> {
         self.processing
             .iter()
@@ -378,6 +412,7 @@ impl FileQueue {
     }
 
     /// Get all failed files
+    #[must_use]
     pub fn failed_files(&self) -> Vec<QueuedFile> {
         self.failed
             .iter()
@@ -386,6 +421,12 @@ impl FileQueue {
     }
 
     /// Retry a failed file
+    ///
+    /// # Errors
+    ///
+    /// Returns [`MonitorError`] if:
+    /// - File is not found in failed queue
+    /// - Persistence saving fails
     pub async fn retry_failed(&self, file_id: Uuid) -> Result<()> {
         if let Some((_, mut file)) = self.failed.remove(&file_id) {
             file.retry_count = 0;
@@ -399,7 +440,7 @@ impl FileQueue {
                 "Retrying failed file"
             );
 
-            self.update_stats().await;
+            self.update_stats();
             self.save_to_persistence().await?;
             Ok(())
         } else {
@@ -410,13 +451,17 @@ impl FileQueue {
     }
 
     /// Clear all failed files
-    pub async fn clear_failed(&self) -> Result<usize> {
+    ///
+    /// # Errors
+    ///
+    /// Returns [`MonitorError`] if persistence saving fails
+    pub fn clear_failed(&self) -> Result<usize> {
         let count = self.failed.len();
         self.failed.clear();
 
         tracing::info!(count, "Cleared failed files");
 
-        self.update_stats().await;
+        self.update_stats();
         Ok(count)
     }
 
@@ -425,6 +470,7 @@ impl FileQueue {
         let mut priority = 0i32;
 
         if self.priority_by_age {
+            #[allow(clippy::cast_possible_truncation)]
             let age_hours = Utc::now()
                 .signed_duration_since(modified_at)
                 .num_hours()
@@ -435,14 +481,16 @@ impl FileQueue {
         if self.priority_by_size {
             // Smaller files get higher priority (easier to process quickly)
             let size_mb = (file_size / (1024 * 1024)).max(1);
-            priority += (1000 / size_mb as i32).max(1);
+            #[allow(clippy::cast_possible_truncation)]
+            let size_mb_i32 = size_mb as i32;
+            priority += (1000 / size_mb_i32).max(1);
         }
 
         priority
     }
 
     /// Update internal statistics
-    async fn update_stats(&self) {
+    fn update_stats(&self) {
         let pending_count = self.pending.read().len();
         let processing_count = self.processing.len();
         let failed_count = self.failed.len();
@@ -466,7 +514,10 @@ impl FileQueue {
                         .num_seconds()
                 })
                 .sum();
-            stats.average_wait_time = total_wait as f64 / processing_count as f64;
+            #[allow(clippy::cast_precision_loss)]
+            {
+                stats.average_wait_time = total_wait as f64 / processing_count as f64;
+            }
         }
     }
 }
@@ -477,6 +528,11 @@ mod tests {
     use tempfile::TempDir;
 
     #[tokio::test]
+    /// Test queue enqueue and dequeue operations
+    ///
+    /// # Panics
+    ///
+    /// Panics if test setup fails (temp directory creation, file operations)
     async fn test_queue_enqueue_dequeue() {
         let temp_dir = TempDir::new().unwrap();
         let test_file = temp_dir.path().join("test.mp3");
@@ -489,7 +545,7 @@ mod tests {
         assert_eq!(queue.stats().total_files, 1);
 
         // Test dequeue
-        let file = queue.dequeue().await.unwrap();
+        let file = queue.dequeue().unwrap();
         assert_eq!(file.id, file_id);
         assert_eq!(file.path, test_file);
         assert_eq!(queue.stats().processing_files, 1);
@@ -501,6 +557,11 @@ mod tests {
     }
 
     #[tokio::test]
+    /// Test queue retry logic
+    ///
+    /// # Panics
+    ///
+    /// Panics if test setup fails (temp directory creation, file operations)
     async fn test_queue_retry_logic() {
         let temp_dir = TempDir::new().unwrap();
         let test_file = temp_dir.path().join("test.mp3");
@@ -509,7 +570,7 @@ mod tests {
         let queue = FileQueue::new(100, None, false, false);
 
         let file_id = queue.enqueue(test_file).await.unwrap();
-        let file = queue.dequeue().await.unwrap();
+        let _file = queue.dequeue().unwrap();
 
         // Test retry
         let should_retry = queue
@@ -520,7 +581,7 @@ mod tests {
         assert_eq!(queue.stats().total_files, 1); // Back in pending queue
 
         // Test final failure
-        let file = queue.dequeue().await.unwrap();
+        let _file = queue.dequeue().unwrap();
         let should_retry = queue
             .mark_failed(file_id, "test error".to_string(), 1)
             .await

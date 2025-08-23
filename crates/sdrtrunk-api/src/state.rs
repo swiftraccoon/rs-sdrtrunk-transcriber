@@ -17,6 +17,10 @@ pub struct AppState {
 
 impl AppState {
     /// Create new application state
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the upload directory cannot be created.
     pub fn new(config: Config, pool: PgPool) -> Result<Self> {
         // Build the full upload directory path
         let upload_dir = config.storage.base_dir.join(&config.storage.upload_dir);
@@ -32,6 +36,7 @@ impl AppState {
     }
 
     /// Get file storage path for a given system and date
+    #[must_use]
     pub fn get_storage_path(&self, system_id: &str, date: chrono::NaiveDate) -> PathBuf {
         self.upload_dir
             .join(system_id)
@@ -41,11 +46,16 @@ impl AppState {
     }
 
     /// Get base upload directory
-    pub fn get_upload_dir(&self) -> &PathBuf {
+    #[must_use]
+    pub const fn get_upload_dir(&self) -> &PathBuf {
         &self.upload_dir
     }
 
     /// Check if the application is properly configured
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if validation fails.
     pub fn validate(&self) -> Result<()> {
         // Check that upload directory exists and is writable
         if !self.upload_dir.exists() {

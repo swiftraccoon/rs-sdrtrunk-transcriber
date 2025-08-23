@@ -78,7 +78,7 @@ async fn serve_api_docs() -> &'static str {
     "API Documentation - See /api/docs/openapi.json for OpenAPI specification"
 }
 
-/// Serve OpenAPI specification
+/// Serve `OpenAPI` specification
 async fn serve_openapi_spec() -> axum::Json<serde_json::Value> {
     // In a real implementation, this would generate or serve the OpenAPI spec
     axum::Json(serde_json::json!({
@@ -113,11 +113,15 @@ async fn serve_metrics() -> &'static str {
 }
 
 /// Admin statistics endpoint
+///
+/// # Errors
+///
+/// Returns an error if the database query fails.
 async fn admin_stats(
     axum::extract::State(state): axum::extract::State<Arc<AppState>>,
 ) -> Result<axum::Json<serde_json::Value>, axum::http::StatusCode> {
     // Implementation would gather comprehensive system statistics
-    let stats = serde_json::json!({
+    let admin_stats = serde_json::json!({
         "database": {
             "pool_size": state.pool.size(),
             "idle_connections": state.pool.num_idle()
@@ -131,10 +135,14 @@ async fn admin_stats(
         }
     });
 
-    Ok(axum::Json(stats))
+    Ok(axum::Json(admin_stats))
 }
 
 /// Admin cleanup endpoint
+///
+/// # Errors
+///
+/// Returns an error if the database operations fail.
 async fn admin_cleanup(
     axum::extract::State(_state): axum::extract::State<Arc<AppState>>,
 ) -> Result<axum::Json<serde_json::Value>, axum::http::StatusCode> {
@@ -213,7 +221,7 @@ async fn root_endpoint() -> axum::Json<serde_json::Value> {
     }))
 }
 
-/// Connectivity test endpoint for SDRTrunk
+/// Connectivity test endpoint for `SDRTrunk`
 async fn connectivity_test() -> axum::Json<serde_json::Value> {
     axum::Json(serde_json::json!({
         "status": "ok",

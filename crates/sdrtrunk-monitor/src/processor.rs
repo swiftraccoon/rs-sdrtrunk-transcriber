@@ -15,6 +15,9 @@ use tokio::time::{Duration, timeout};
 use tracing::{debug, error, info, instrument, warn};
 use uuid::Uuid;
 
+/// System information tuple (`system_id`, `system_label`)
+type SystemInfo = (Option<String>, Option<String>);
+
 /// Status of file processing
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub enum ProcessingStatus {
@@ -88,7 +91,8 @@ pub struct FileProcessor {
 
 impl FileProcessor {
     /// Create a new file processor
-    pub fn new(
+    #[must_use]
+    pub const fn new(
         db_pool: Arc<PgPool>,
         config: ProcessingConfig,
         archive_dir: PathBuf,
@@ -106,7 +110,7 @@ impl FileProcessor {
 
     /// Process a single file
     #[instrument(skip(self), fields(file_id = %file.id, path = %file.path.display()))]
-    pub async fn process_file(&self, mut file: QueuedFile) -> ProcessingResult {
+    pub async fn process_file(&self, file: QueuedFile) -> ProcessingResult {
         let start_time = std::time::Instant::now();
 
         info!("Starting file processing");
@@ -124,11 +128,11 @@ impl FileProcessor {
         // Process with timeout
         let processing_result = timeout(
             self.config.processing_timeout(),
-            self.process_file_internal(&mut file),
+            self.process_file_internal(&file),
         )
         .await;
 
-        result.processing_duration = start_time.elapsed().into();
+        result.processing_duration = start_time.elapsed();
 
         match processing_result {
             Ok(Ok(processing_status)) => {
@@ -162,12 +166,21 @@ impl FileProcessor {
             }
         }
 
-        result.file = file;
+        result.file = file.clone();
         result
     }
 
     /// Internal file processing logic
-    async fn process_file_internal(&self, file: &mut QueuedFile) -> Result<ProcessingStatus> {
+    /// Process a file internally
+    ///
+    /// # Errors
+    ///
+    /// Returns [`MonitorError`] if:
+    /// - File cannot be read or is corrupted
+    /// - Database operations fail
+    /// - File archiving fails
+    /// - Audio processing fails
+    async fn process_file_internal(&self, file: &QueuedFile) -> Result<ProcessingStatus> {
         // Verify file still exists and is accessible
         if !file.path.exists() {
             return Ok(ProcessingStatus::Skipped {
@@ -213,6 +226,13 @@ impl FileProcessor {
     }
 
     /// Verify file integrity (basic checks)
+    ///
+    /// # Errors
+    ///
+    /// Returns [`MonitorError`] if:
+    /// - File cannot be opened or read
+    /// - File has invalid MP3 format (for MP3 files)
+    /// - File is corrupted or truncated
     async fn verify_file_integrity(&self, path: &Path) -> Result<()> {
         debug!("Verifying file integrity");
 
@@ -220,33 +240,46 @@ impl FileProcessor {
         let mut file = fs::File::open(path).await?;
 
         // For MP3 files, check for basic MP3 header
-        if let Some(ext) = path.extension().and_then(|e| e.to_str()) {
-            if ext.eq_ignore_ascii_case("mp3") {
-                use tokio::io::AsyncReadExt;
-
-                let mut buffer = [0u8; 4];
-                if file.read_exact(&mut buffer).await.is_ok() {
-                    // Check for MP3 sync word (0xFFE or 0xFFF at start)
-                    if buffer[0] == 0xFF && (buffer[1] & 0xE0) == 0xE0 {
-                        debug!("MP3 header verification passed");
-                        return Ok(());
-                    }
-
-                    // Check for ID3 tag
-                    if &buffer[0..3] == b"ID3" {
-                        debug!("ID3 tag found, assuming valid MP3");
-                        return Ok(());
-                    }
-                }
-
-                return Err(MonitorError::invalid_file(path, "Invalid MP3 file format"));
-            }
+        if let Some(ext) = path.extension().and_then(|e| e.to_str())
+            && ext.eq_ignore_ascii_case("mp3")
+        {
+            Self::verify_mp3_format(&mut file, path).await?;
         }
 
         Ok(())
     }
 
+    /// Verify MP3 file format
+    ///
+    /// # Errors
+    ///
+    /// Returns [`MonitorError`] if the file has invalid MP3 format
+    async fn verify_mp3_format(file: &mut fs::File, path: &Path) -> Result<()> {
+        use tokio::io::AsyncReadExt;
+
+        let mut buffer = [0u8; 4];
+        if file.read_exact(&mut buffer).await.is_ok() {
+            // Check for MP3 sync word (0xFFE or 0xFFF at start)
+            if buffer[0] == 0xFF && (buffer[1] & 0xE0) == 0xE0 {
+                debug!("MP3 header verification passed");
+                return Ok(());
+            }
+
+            // Check for ID3 tag
+            if &buffer[0..3] == b"ID3" {
+                debug!("ID3 tag found, assuming valid MP3");
+                return Ok(());
+            }
+        }
+
+        Err(MonitorError::invalid_file(path, "Invalid MP3 file format"))
+    }
+
     /// Check if file already exists in database
+    ///
+    /// # Errors
+    ///
+    /// Returns [`MonitorError`] if database query fails
     async fn find_existing_record(&self, file: &QueuedFile) -> Result<Option<Uuid>> {
         let file_path_str = file.path.to_string_lossy();
         let filename = file.path.file_name().and_then(|n| n.to_str()).unwrap_or("");
@@ -263,6 +296,17 @@ impl FileProcessor {
     }
 
     /// Extract metadata from the file
+    ///
+    /// # Errors
+    ///
+    /// Returns [`MonitorError`] if:
+    /// - File metadata cannot be read
+    /// - File modification time cannot be determined
+    ///
+    /// # Panics
+    ///
+    /// Panics if the file modification time is before the Unix epoch
+    /// (should not happen on modern systems)
     async fn extract_file_metadata(&self, path: &Path) -> Result<serde_json::Value> {
         debug!("Extracting file metadata");
 
@@ -270,7 +314,10 @@ impl FileProcessor {
 
         let mut meta = serde_json::json!({
             "file_size": metadata.len(),
-            "modified_at": metadata.modified()?.duration_since(std::time::UNIX_EPOCH).unwrap().as_secs(),
+            "modified_at": metadata.modified()?
+                .duration_since(std::time::UNIX_EPOCH)
+                .expect("File modification time is before Unix epoch")
+                .as_secs(),
             "file_type": "audio/mpeg", // Assuming MP3 for now
             "processor_version": env!("CARGO_PKG_VERSION"),
             "processed_at": Utc::now().timestamp(),
@@ -287,7 +334,7 @@ impl FileProcessor {
             );
 
             // Try to extract system info from filename if it follows SDRTrunk naming convention
-            if let Some(system_info) = self.extract_system_info_from_filename(filename) {
+            if let Some(system_info) = Self::extract_system_info_from_filename(filename) {
                 meta["extracted_system_info"] = system_info;
             }
         }
@@ -300,6 +347,13 @@ impl FileProcessor {
     }
 
     /// Create database record for the processed file
+    ///
+    /// # Errors
+    ///
+    /// Returns [`MonitorError`] if:
+    /// - Database transaction fails
+    /// - Required metadata fields are missing
+    /// - SQL query execution fails
     async fn create_database_record(
         &self,
         file: &QueuedFile,
@@ -307,6 +361,15 @@ impl FileProcessor {
     ) -> Result<Uuid> {
         debug!("Creating database record");
 
+        let record = Self::build_radio_call_record(file, metadata);
+        self.insert_radio_call_record(&record).await?;
+
+        info!(record_id = %record.id, "Created database record");
+        Ok(record.id)
+    }
+
+    /// Build a `RadioCallDb` record from file and metadata
+    fn build_radio_call_record(file: &QueuedFile, metadata: &serde_json::Value) -> RadioCallDb {
         let record_id = Uuid::new_v4();
         let now = Utc::now();
 
@@ -317,25 +380,17 @@ impl FileProcessor {
             .map(ToString::to_string);
 
         let file_path_str = file.path.to_string_lossy().to_string();
+        let (system_id, system_label) = Self::extract_system_info(metadata, filename.as_ref());
+        let duration_seconds = Self::extract_duration_from_metadata(metadata);
 
-        // Extract system information from metadata or filename
-        let (system_id, system_label) = self.extract_system_info(metadata, &filename);
-
-        let duration_seconds = metadata
-            .get("duration_estimate")
-            .and_then(|v| v.as_f64())
-            .map(Decimal::from_f64_retain)
-            .flatten();
-
-        // Create the database record
-        let record = RadioCallDb {
+        RadioCallDb {
             id: record_id,
             created_at: now,
             call_timestamp: file.modified_at,
             system_id: system_id.unwrap_or_else(|| "unknown".to_string()),
             system_label,
-            frequency: None,    // Will be populated later if available
-            talkgroup_id: None, // Will be populated later if available
+            frequency: None,
+            talkgroup_id: None,
             talkgroup_label: None,
             talkgroup_group: None,
             talkgroup_tag: None,
@@ -343,10 +398,10 @@ impl FileProcessor {
             talker_alias: None,
             audio_filename: filename,
             audio_file_path: Some(file_path_str),
-            audio_size_bytes: Some(file.size as i64),
+            audio_size_bytes: Some(i64::try_from(file.size).unwrap_or(0)),
             audio_content_type: Some("audio/mpeg".to_string()),
             duration_seconds,
-            transcription_text: None, // Will be populated by transcription service
+            transcription_text: None,
             transcription_confidence: None,
             transcription_language: None,
             transcription_status: Some("pending".to_string()),
@@ -358,11 +413,25 @@ impl FileProcessor {
             upload_ip: None,
             upload_timestamp: now,
             upload_api_key_id: Some("file-monitor".to_string()),
-        };
+        }
+    }
 
-        // Insert into database using a simpler approach
+    /// Extract duration from metadata
+    fn extract_duration_from_metadata(metadata: &serde_json::Value) -> Option<Decimal> {
+        metadata
+            .get("duration_estimate")
+            .and_then(serde_json::Value::as_f64)
+            .and_then(Decimal::from_f64_retain)
+    }
+
+    /// Insert `RadioCallDb` record into database
+    ///
+    /// # Errors
+    ///
+    /// Returns [`MonitorError`] if database insert fails
+    async fn insert_radio_call_record(&self, record: &RadioCallDb) -> Result<()> {
         let rows_affected = sqlx::query(
-            r#"INSERT INTO radio_calls (
+            "INSERT INTO radio_calls (
                 id, created_at, call_timestamp, system_id, system_label,
                 frequency, talkgroup_id, talkgroup_label, talkgroup_group, talkgroup_tag,
                 source_radio_id, talker_alias, audio_filename, audio_file_path,
@@ -374,53 +443,59 @@ impl FileProcessor {
                 $1, $2, $3, $4, $5, $6, $7, $8, $9, $10,
                 $11, $12, $13, $14, $15, $16, $17, $18, $19, $20,
                 $21, $22, $23, $24, $25, $26, $27, $28, $29
-            )"#,
+            )",
         )
         .bind(record.id)
         .bind(record.created_at)
         .bind(record.call_timestamp)
-        .bind(record.system_id)
-        .bind(record.system_label)
+        .bind(&record.system_id)
+        .bind(&record.system_label)
         .bind(record.frequency)
         .bind(record.talkgroup_id)
-        .bind(record.talkgroup_label)
-        .bind(record.talkgroup_group)
-        .bind(record.talkgroup_tag)
+        .bind(&record.talkgroup_label)
+        .bind(&record.talkgroup_group)
+        .bind(&record.talkgroup_tag)
         .bind(record.source_radio_id)
-        .bind(record.talker_alias)
-        .bind(record.audio_filename)
-        .bind(record.audio_file_path)
+        .bind(&record.talker_alias)
+        .bind(&record.audio_filename)
+        .bind(&record.audio_file_path)
         .bind(record.audio_size_bytes)
-        .bind(record.audio_content_type)
+        .bind(&record.audio_content_type)
         .bind(record.duration_seconds)
-        .bind(record.transcription_text)
+        .bind(&record.transcription_text)
         .bind(record.transcription_confidence)
-        .bind(record.transcription_language)
-        .bind(record.transcription_status)
-        .bind(record.speaker_segments)
+        .bind(&record.transcription_language)
+        .bind(&record.transcription_status)
+        .bind(&record.speaker_segments)
         .bind(record.speaker_count)
-        .bind(record.patches)
-        .bind(record.frequencies)
-        .bind(record.sources)
+        .bind(&record.patches)
+        .bind(&record.frequencies)
+        .bind(&record.sources)
         .bind(record.upload_ip)
         .bind(record.upload_timestamp)
-        .bind(record.upload_api_key_id)
+        .bind(&record.upload_api_key_id)
         .execute(self.db_pool.as_ref())
         .await?;
 
         if rows_affected.rows_affected() == 0 {
             return Err(MonitorError::processing(
-                file.path.clone(),
+                PathBuf::from(record.audio_file_path.as_ref().map_or("unknown", |s| s)),
                 "Failed to insert database record",
             ));
         }
 
-        info!(record_id = %record_id, "Created database record");
-
-        Ok(record_id)
+        Ok(())
     }
 
     /// Archive a processed file
+    ///
+    /// # Errors
+    ///
+    /// Returns [`MonitorError`] if:
+    /// - Cannot create archive directories
+    /// - File copy/move operation fails
+    /// - Archive path generation fails
+    #[allow(clippy::cognitive_complexity)]
     async fn archive_file(&self, file: &QueuedFile) -> Result<PathBuf> {
         debug!("Archiving file");
 
@@ -428,7 +503,7 @@ impl FileProcessor {
         fs::create_dir_all(&self.archive_dir).await?;
 
         // Generate archive path
-        let archive_path = self.generate_archive_path(file).await?;
+        let archive_path = self.generate_archive_path(file)?;
 
         // Ensure archive subdirectory exists
         if let Some(parent) = archive_path.parent() {
@@ -457,7 +532,11 @@ impl FileProcessor {
     }
 
     /// Generate archive path for a file
-    async fn generate_archive_path(&self, file: &QueuedFile) -> Result<PathBuf> {
+    ///
+    /// # Errors
+    ///
+    /// Returns [`MonitorError`] if path generation fails
+    fn generate_archive_path(&self, file: &QueuedFile) -> Result<PathBuf> {
         let mut archive_path = self.archive_dir.clone();
 
         // Organize by date if configured
@@ -493,7 +572,7 @@ impl FileProcessor {
                     final_path = archive_path.with_file_name(format!("{stem}_{counter}"));
                 }
             } else {
-                final_path = archive_path.with_extension(&counter.to_string());
+                final_path = archive_path.with_extension(counter.to_string());
             }
             counter += 1;
         }
@@ -502,6 +581,11 @@ impl FileProcessor {
     }
 
     /// Delete a file
+    /// Delete a file from filesystem
+    ///
+    /// # Errors
+    ///
+    /// Returns [`MonitorError`] if file deletion fails
     async fn delete_file(&self, path: &Path) -> Result<()> {
         debug!(path = %path.display(), "Deleting file");
 
@@ -512,11 +596,7 @@ impl FileProcessor {
     }
 
     /// Extract system information from metadata or filename
-    fn extract_system_info(
-        &self,
-        metadata: &serde_json::Value,
-        filename: &Option<String>,
-    ) -> (Option<String>, Option<String>) {
+    fn extract_system_info(metadata: &serde_json::Value, filename: Option<&String>) -> SystemInfo {
         // First check if metadata contains extracted system info
         if let Some(system_info) = metadata.get("extracted_system_info") {
             let system_id = system_info
@@ -531,25 +611,25 @@ impl FileProcessor {
         }
 
         // Fallback to filename-based extraction
-        if let Some(filename) = filename {
-            if let Some(system_info) = self.extract_system_info_from_filename(filename) {
-                let system_id = system_info
-                    .get("system_id")
-                    .and_then(|v| v.as_str())
-                    .map(ToString::to_string);
-                let system_label = system_info
-                    .get("system_label")
-                    .and_then(|v| v.as_str())
-                    .map(ToString::to_string);
-                return (system_id, system_label);
-            }
+        if let Some(filename) = filename
+            && let Some(system_info) = Self::extract_system_info_from_filename(filename)
+        {
+            let system_id = system_info
+                .get("system_id")
+                .and_then(|v| v.as_str())
+                .map(ToString::to_string);
+            let system_label = system_info
+                .get("system_label")
+                .and_then(|v| v.as_str())
+                .map(ToString::to_string);
+            return (system_id, system_label);
         }
 
         (None, None)
     }
 
-    /// Extract system information from filename (SDRTrunk naming convention)
-    fn extract_system_info_from_filename(&self, filename: &str) -> Option<serde_json::Value> {
+    /// Extract system information from filename (`SDRTrunk` naming convention)
+    fn extract_system_info_from_filename(filename: &str) -> Option<serde_json::Value> {
         // SDRTrunk typically uses patterns like:
         // SystemName_TG123_20240101_120000.mp3
         // Try to parse common patterns
@@ -582,8 +662,14 @@ impl FileProcessor {
     }
 
     /// Estimate MP3 duration (simplified - in production use proper audio library)
+    /// Estimate MP3 file duration based on file size
+    ///
+    /// # Errors
+    ///
+    /// Returns [`MonitorError`] if file metadata cannot be read
     async fn estimate_mp3_duration(&self, path: &Path) -> Result<serde_json::Value> {
         let metadata = fs::metadata(path).await?;
+        #[allow(clippy::cast_precision_loss)]
         let file_size = metadata.len() as f64;
 
         // Very rough estimate: assume 128kbps MP3
@@ -591,12 +677,14 @@ impl FileProcessor {
         let estimated_duration = file_size * 8.0 / 128_000.0;
 
         Ok(serde_json::Value::Number(
-            serde_json::Number::from_f64(estimated_duration).unwrap_or(serde_json::Number::from(0)),
+            serde_json::Number::from_f64(estimated_duration)
+                .unwrap_or_else(|| serde_json::Number::from(0)),
         ))
     }
 
     /// Get database connection pool
     #[must_use]
+    #[allow(clippy::missing_const_for_fn)]
     pub fn db_pool(&self) -> &Arc<PgPool> {
         &self.db_pool
     }

@@ -1,0 +1,45 @@
+# Containerfile for local CI/CD testing
+# Mimics the GitHub Actions CI environment
+
+FROM rust:1.89.0
+
+# Install system dependencies
+RUN apt-get update && apt-get install -y \
+    build-essential \
+    git \
+    curl \
+    pkg-config \
+    libssl-dev \
+    postgresql-client \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install additional Rust components
+RUN rustup component add \
+    rustfmt \
+    clippy \
+    llvm-tools
+
+# Install cargo tools used in CI
+RUN cargo install --locked \
+    cargo-nextest \
+    cargo-llvm-cov \
+    cargo-audit \
+    cargo-deny \
+    cargo-machete
+
+# Install Miri for memory safety checks (nightly)
+RUN rustup toolchain install nightly && \
+    rustup +nightly component add miri
+
+# Install sqlx-cli for database migrations
+RUN cargo install sqlx-cli --no-default-features --features native-tls,postgres
+
+# Set working directory
+WORKDIR /workspace
+
+# Create a script to run all CI checks
+COPY scripts/run-ci-checks.sh /usr/local/bin/run-ci-checks
+RUN chmod +x /usr/local/bin/run-ci-checks
+
+# Default command
+CMD ["/usr/local/bin/run-ci-checks"]

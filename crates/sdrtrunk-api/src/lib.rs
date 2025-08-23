@@ -1,4 +1,4 @@
-//! SDRTrunk API server library
+//! `SDRTrunk` API server library
 
 pub mod handlers;
 pub mod routes;
@@ -15,7 +15,11 @@ use sdrtrunk_database::PgPool;
 use std::sync::Arc;
 
 /// Build the API router with all routes and middleware
-pub async fn build_router(config: Config, pool: PgPool) -> Result<Router> {
+///
+/// # Errors
+///
+/// Returns an error if the application state validation fails.
+pub fn build_router(config: Config, pool: PgPool) -> Result<Router> {
     let state = Arc::new(AppState::new(config, pool)?);
 
     // Validate the application state
@@ -28,8 +32,12 @@ pub async fn build_router(config: Config, pool: PgPool) -> Result<Router> {
 }
 
 /// Build a minimal router for testing (without authentication)
+///
+/// # Errors
+///
+/// Returns an error if the application state creation fails.
 #[cfg(test)]
-pub async fn build_test_router(config: Config, pool: PgPool) -> Result<Router> {
+pub fn build_test_router(config: Config, pool: PgPool) -> Result<Router> {
     let state = Arc::new(AppState::new(config, pool)?);
 
     // Build a simplified router for testing
