@@ -32,7 +32,18 @@ rust_decimal = { version = "1.36", features = ["serde", "db-postgres"] }
 # Error handling (uses sdrtrunk-core custom implementations)
 
 [dev-dependencies]
+# Async runtime for tests
 tokio = { version = "1.40", features = ["rt-multi-thread", "macros"] }
+
+# Test utilities
 pretty_assertions = "1.4"
+tempfile = "3.13"
 testcontainers = "0.23"
 testcontainers-modules = { version = "0.11", features = ["postgres"] }
+
+# Property-based testing
+proptest = "1.5"
+tokio-test = "0.4"
+
+# Additional test utilities
+futures = "0.3"

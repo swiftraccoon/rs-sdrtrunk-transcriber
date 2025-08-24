@@ -79,8 +79,16 @@ sqlx = { version = "0.8", features = ["runtime-tokio", "postgres", "uuid", "chro
 rust_decimal = { version = "1.36", features = ["serde", "db-postgres"] }
 
 [dev-dependencies]
+# HTTP client for testing
 reqwest = { version = "0.12", features = ["json", "multipart"] }
 tower = { version = "0.5", features = ["util"] }
 hyper = "1.5"
+
+# Test utilities
 pretty_assertions = "1.4"
 tempfile = "3.13"
+testcontainers = "0.23"
+testcontainers-modules = { version = "0.11", features = ["postgres"] }
+futures = "0.3"
+validator = { version = "0.19", features = ["derive"] }
+tokio-test = "0.4"

@@ -60,9 +60,19 @@ async-recursion = "1.1"
 num_cpus = "1.16"
 
 [dev-dependencies]
+# Async runtime for tests
 tokio = { workspace = true, features = ["test-util"] }
+
+# Test utilities
 tempfile = { workspace = true }
 similar-asserts = { workspace = true }
+pretty_assertions = "1.4"
+testcontainers = "0.23"
+testcontainers-modules = { version = "0.11", features = ["postgres"] }
+tokio-test = "0.4"
+futures = "0.3"
+
+# Benchmarking
 criterion = { workspace = true }
 
 [[bin]]

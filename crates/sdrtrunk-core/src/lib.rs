@@ -153,3 +153,177 @@ pub fn init_logging() -> context_error::Result<()> {
 
     Ok(())
 }
+
+#[cfg(test)]
+#[allow(clippy::missing_panics_doc)]
+mod tests {
+    use super::*;
+    use std::error::Error as StdError;
+
+    #[test]
+    fn test_re_exports() {
+        // Test that re-exports work
+        let _: Config = Config::default();
+        let _: Error = Error::NotFound {
+            resource: "test".to_string(),
+        };
+    }
+
+    #[test]
+    fn test_init_logging() {
+        // Test logging initialization
+        let result = init_logging();
+        assert!(result.is_ok());
+    }
+
+    #[allow(clippy::missing_panics_doc)]
+    mod context_error_tests {
+        use super::*;
+        use crate::context_error::{ContextError, ResultExt};
+        use std::io;
+
+        #[test]
+        fn test_context_error_new() {
+            let error = ContextError::new("test error");
+            assert_eq!(error.to_string(), "test error");
+            assert!(error.source().is_none());
+        }
+
+        #[test]
+        fn test_context_error_with_context() {
+            let io_error = io::Error::new(io::ErrorKind::NotFound, "file not found");
+            let error = ContextError::with_context(io_error, "failed to read file");
+            assert_eq!(error.to_string(), "failed to read file");
+            assert!(error.source().is_some());
+        }
+
+        #[test]
+        fn test_context_error_display() {
+            let error = ContextError::new("display test");
+            assert_eq!(format!("{error}"), "display test");
+        }
+
+        #[test]
+        fn test_context_error_debug() {
+            let error = ContextError::new("debug test");
+            let debug_str = format!("{error:?}");
+            assert!(debug_str.contains("ContextError"));
+            assert!(debug_str.contains("debug test"));
+        }
+
+        #[test]
+        fn test_context_error_macro() {
+            let error = context_error!("macro test");
+            assert_eq!(error.to_string(), "macro test");
+
+            let error = context_error!("formatted {}", "test");
+            assert_eq!(error.to_string(), "formatted test");
+        }
+
+        #[test]
+        fn test_result_ext_trait() {
+            let result: std::result::Result<i32, io::Error> =
+                Err(io::Error::new(io::ErrorKind::NotFound, "not found"));
+            let context_result = result.with_context(|| "operation failed");
+
+            assert!(context_result.is_err());
+            let error = context_result.unwrap_err();
+            assert_eq!(error.to_string(), "operation failed");
+            assert!(error.source().is_some());
+        }
+
+        #[test]
+        fn test_result_ext_trait_success() {
+            let result: std::result::Result<i32, io::Error> = Ok(42);
+            let context_result = result.with_context(|| "should not be called");
+
+            assert!(context_result.is_ok());
+            assert_eq!(context_result.unwrap(), 42);
+        }
+
+        #[test]
+        fn test_from_io_error() {
+            let io_error = io::Error::new(io::ErrorKind::PermissionDenied, "permission denied");
+            let context_error: ContextError = io_error.into();
+
+            assert_eq!(context_error.to_string(), "I/O operation failed");
+            assert!(context_error.source().is_some());
+        }
+
+        #[test]
+        fn test_from_json_error() {
+            // Create a JSON error by trying to parse invalid JSON
+            let json_error = serde_json::from_str::<serde_json::Value>("{").unwrap_err();
+            let context_error: ContextError = json_error.into();
+
+            assert_eq!(context_error.to_string(), "JSON serialization failed");
+            assert!(context_error.source().is_some());
+        }
+
+        #[test]
+        fn test_from_config_error() {
+            // Create a config error by trying to parse invalid TOML
+            let config_error = ::config::Config::builder()
+                .add_source(::config::File::from_str(
+                    "invalid toml [",
+                    ::config::FileFormat::Toml,
+                ))
+                .build()
+                .unwrap_err();
+            let context_error: ContextError = config_error.into();
+
+            assert_eq!(context_error.to_string(), "Configuration error");
+            assert!(context_error.source().is_some());
+        }
+
+        #[test]
+        fn test_error_chain() {
+            let io_error = io::Error::new(io::ErrorKind::NotFound, "file not found");
+            let context_error = ContextError::with_context(io_error, "failed to read config");
+
+            // Walk the error chain
+            let mut current_error = &context_error as &dyn StdError;
+            let mut chain = Vec::new();
+
+            while let Some(source) = current_error.source() {
+                chain.push(current_error.to_string());
+                current_error = source;
+            }
+            chain.push(current_error.to_string());
+
+            assert_eq!(chain[0], "failed to read config");
+            assert_eq!(chain[1], "file not found");
+        }
+
+        #[test]
+        fn test_context_error_with_empty_message() {
+            let error = ContextError::new("");
+            assert_eq!(error.to_string(), "");
+        }
+
+        #[test]
+        fn test_context_error_with_unicode() {
+            let error = ContextError::new("测试错误");
+            assert_eq!(error.to_string(), "测试错误");
+        }
+
+        #[test]
+        fn test_nested_context_errors() {
+            let inner = ContextError::new("inner error");
+            let outer = ContextError::with_context(inner, "outer context");
+
+            assert_eq!(outer.to_string(), "outer context");
+            assert!(outer.source().is_some());
+            assert_eq!(outer.source().unwrap().to_string(), "inner error");
+        }
+
+        #[test]
+        fn test_result_type_alias() {
+            let success: crate::context_error::Result<i32> = Ok(42);
+            assert!(matches!(success, Ok(42)));
+
+            let failure: crate::context_error::Result<i32> = Err(ContextError::new("error"));
+            assert!(failure.is_err());
+        }
+    }
+}

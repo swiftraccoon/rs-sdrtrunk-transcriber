@@ -215,6 +215,7 @@ pub fn calculate_audio_duration(audio_data: &[u8], filename: Option<&str>) -> Op
 }
 
 #[cfg(test)]
+#[allow(clippy::missing_panics_doc)]
 mod tests {
     use super::*;
 

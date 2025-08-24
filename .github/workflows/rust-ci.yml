@@ -21,9 +21,9 @@ jobs:
       uses: actions/checkout@v4
       
     - name: Install Rust toolchain
-      uses: dtolnay/rust-toolchain@stable
+      uses: dtolnay/rust-toolchain@1.89.0
       with:
-        toolchain: stable
+        toolchain: 1.89.0
         components: rustfmt, clippy
         
     - name: Cache cargo registry
@@ -62,7 +62,7 @@ jobs:
       fail-fast: false
       matrix:
         os: [ubuntu-latest, windows-latest, macos-latest]
-        rust: [stable, beta, nightly]
+        rust: [1.89.0, beta, nightly]
         exclude:
           # Reduce CI load by testing nightly only on Ubuntu
           - os: windows-latest
@@ -77,7 +77,7 @@ jobs:
       uses: actions/checkout@v4
       
     - name: Install Rust toolchain
-      uses: dtolnay/rust-toolchain@stable
+      uses: dtolnay/rust-toolchain@master
       with:
         toolchain: ${{ matrix.rust }}
         components: llvm-tools-preview
@@ -114,9 +114,9 @@ jobs:
       uses: actions/checkout@v4
       
     - name: Install Rust toolchain
-      uses: dtolnay/rust-toolchain@stable
+      uses: dtolnay/rust-toolchain@1.89.0
       with:
-        toolchain: stable
+        toolchain: 1.89.0
         components: llvm-tools-preview
         
     - name: Cache cargo registry
@@ -138,7 +138,9 @@ jobs:
         cargo install cargo-nextest --locked
         
     - name: Generate coverage report
-      run: cargo llvm-cov nextest --workspace --all-features --lcov --output-path lcov.info
+      run: |
+        cargo llvm-cov nextest --workspace --all-features --lcov --output-path lcov.info
+        cargo llvm-cov report --workspace --all-features --fail-under 90
       
     - name: Upload coverage to Codecov
       uses: codecov/codecov-action@v4
@@ -156,9 +158,9 @@ jobs:
       uses: actions/checkout@v4
       
     - name: Install Rust toolchain
-      uses: dtolnay/rust-toolchain@stable
+      uses: dtolnay/rust-toolchain@1.89.0
       with:
-        toolchain: stable
+        toolchain: 1.89.0
         
     - name: Cache cargo registry
       uses: actions/cache@v4
@@ -229,9 +231,9 @@ jobs:
       uses: actions/checkout@v4
       
     - name: Install Rust toolchain
-      uses: dtolnay/rust-toolchain@stable
+      uses: dtolnay/rust-toolchain@1.89.0
       with:
-        toolchain: stable
+        toolchain: 1.89.0
         
     - name: Cache cargo registry
       uses: actions/cache@v4
@@ -265,9 +267,9 @@ jobs:
       uses: actions/checkout@v4
       
     - name: Install Rust toolchain
-      uses: dtolnay/rust-toolchain@stable
+      uses: dtolnay/rust-toolchain@1.89.0
       with:
-        toolchain: stable
+        toolchain: 1.89.0
         
     - name: Cache cargo registry
       uses: actions/cache@v4

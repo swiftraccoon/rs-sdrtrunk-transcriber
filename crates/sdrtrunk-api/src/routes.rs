@@ -244,3 +244,294 @@ async fn api_info() -> axum::Json<serde_json::Value> {
         "compatible": "Rdio Scanner API"
     }))
 }
+
+#[cfg(test)]
+#[allow(clippy::missing_panics_doc)]
+mod tests {
+    use super::*;
+    use axum::http::StatusCode;
+    use serde_json;
+
+    #[tokio::test]
+    async fn test_serve_api_docs() {
+        let docs = serve_api_docs().await;
+        let expected = "API Documentation - See /api/docs/openapi.json for OpenAPI specification";
+
+        // Test that the function returns the expected static string
+        assert_eq!(docs, expected);
+    }
+
+    #[tokio::test]
+    async fn test_serve_metrics() {
+        let metrics = serve_metrics().await;
+
+        // Should contain Prometheus format metrics
+        assert!(metrics.contains("# HELP sdrtrunk_calls_total"));
+        assert!(metrics.contains("# TYPE sdrtrunk_calls_total counter"));
+        assert!(metrics.contains("sdrtrunk_calls_total 0"));
+    }
+
+    #[tokio::test]
+    async fn test_serve_openapi_spec() {
+        let spec = serve_openapi_spec().await;
+        let json_value = spec.0;
+
+        // Verify OpenAPI spec structure
+        assert_eq!(json_value["openapi"], "3.0.0");
+        assert_eq!(json_value["info"]["title"], "SDRTrunk Transcriber API");
+        assert_eq!(json_value["info"]["version"], "0.1.0");
+
+        // Check that paths exist
+        assert!(json_value["paths"].is_object());
+        let paths = json_value["paths"].as_object().unwrap();
+        assert!(!paths.is_empty());
+
+        // Check specific paths that we know exist in the hardcoded JSON
+        assert!(paths.contains_key("/api/call-upload"));
+        assert!(paths.contains_key("/api/calls"));
+    }
+
+    #[tokio::test]
+    async fn test_connectivity_test_response() {
+        let response = connectivity_test().await;
+        let json_value = response.0;
+
+        assert_eq!(json_value["status"], "ok");
+        assert_eq!(json_value["service"], "sdrtrunk-transcriber");
+        assert!(
+            json_value["message"]
+                .as_str()
+                .unwrap()
+                .contains("Rdio Scanner")
+        );
+    }
+
+    #[tokio::test]
+    async fn test_root_endpoint_response() {
+        let response = root_endpoint().await;
+        let json_value = response.0;
+
+        assert_eq!(json_value["service"], "SDRTrunk Transcriber API");
+        assert_eq!(json_value["version"], "0.1.0");
+        assert_eq!(json_value["status"], "ok");
+    }
+
+    #[tokio::test]
+    async fn test_api_info_response() {
+        let response = api_info().await;
+        let json_value = response.0;
+
+        assert_eq!(json_value["api"], "SDRTrunk Transcriber API");
+        assert_eq!(json_value["version"], "0.1.0");
+        assert_eq!(json_value["compatible"], "Rdio Scanner API");
+
+        // Check endpoints structure
+        let endpoints = &json_value["endpoints"];
+        assert_eq!(endpoints["upload"], "/api/call-upload");
+        assert_eq!(endpoints["rdio_upload"], "/api/rdio-scanner/upload");
+        assert_eq!(endpoints["calls"], "/api/calls");
+        assert_eq!(endpoints["health"], "/health");
+    }
+
+    #[tokio::test]
+    async fn test_not_found_handler() {
+        let (status, response) = not_found_handler().await;
+        let json_value = response.0;
+
+        assert_eq!(status, StatusCode::NOT_FOUND);
+        assert_eq!(json_value["error"], "Not Found");
+        assert_eq!(json_value["code"], "ROUTE_NOT_FOUND");
+        assert!(
+            json_value["message"]
+                .as_str()
+                .unwrap()
+                .contains("requested endpoint does not exist")
+        );
+    }
+
+    #[tokio::test]
+    async fn test_list_api_keys_response() {
+        let response = list_api_keys().await;
+        let json_value = response.0;
+
+        assert!(json_value["api_keys"].is_array());
+        assert_eq!(json_value["api_keys"].as_array().unwrap().len(), 0);
+    }
+
+    #[tokio::test]
+    async fn test_create_api_key_response() {
+        let response = create_api_key().await;
+        let json_value = response.0;
+
+        assert!(
+            json_value["message"]
+                .as_str()
+                .unwrap()
+                .contains("not yet implemented")
+        );
+    }
+
+    #[tokio::test]
+    async fn test_get_api_key_response() {
+        let response = get_api_key(axum::extract::Path("test_key".to_string())).await;
+        let json_value = response.0;
+
+        assert!(
+            json_value["message"]
+                .as_str()
+                .unwrap()
+                .contains("not yet implemented")
+        );
+    }
+
+    #[tokio::test]
+    async fn test_delete_api_key_response() {
+        let response = delete_api_key(axum::extract::Path("test_key".to_string())).await;
+        let json_value = response.0;
+
+        assert!(
+            json_value["message"]
+                .as_str()
+                .unwrap()
+                .contains("not yet implemented")
+        );
+    }
+
+    // Test router construction (without running server)
+    #[test]
+    fn test_api_routes_construction() {
+        let router = api_routes();
+
+        // Router should be constructible
+        // We can't easily test routing without a full app setup
+        // but we can verify the router builds
+        assert!(std::mem::size_of_val(&router) > 0);
+    }
+
+    #[test]
+    fn test_health_routes_construction() {
+        let router = health_routes();
+        assert!(std::mem::size_of_val(&router) > 0);
+    }
+
+    #[test]
+    fn test_docs_routes_construction() {
+        let router = docs_routes();
+        assert!(std::mem::size_of_val(&router) > 0);
+    }
+
+    #[test]
+    fn test_admin_routes_construction() {
+        let router = admin_routes();
+        assert!(std::mem::size_of_val(&router) > 0);
+    }
+
+    #[test]
+    fn test_build_router_construction() {
+        let router = build_router();
+        assert!(std::mem::size_of_val(&router) > 0);
+    }
+
+    // Test JSON serialization of responses
+    #[tokio::test]
+    async fn test_openapi_spec_serialization() {
+        let spec = serve_openapi_spec().await;
+        let json_string = serde_json::to_string(&spec.0).expect("Should serialize to JSON");
+
+        // Verify it's valid JSON and contains key fields
+        assert!(json_string.contains("\"openapi\":\"3.0.0\""));
+        assert!(json_string.contains("\"title\":\"SDRTrunk Transcriber API\""));
+    }
+
+    #[tokio::test]
+    async fn test_error_response_structure() {
+        let (status, response) = not_found_handler().await;
+
+        // Verify error response has all required fields
+        let json_value = response.0;
+        assert!(json_value.is_object());
+        assert!(json_value.get("error").is_some());
+        assert!(json_value.get("code").is_some());
+        assert!(json_value.get("message").is_some());
+
+        // Verify status code
+        assert_eq!(status, StatusCode::NOT_FOUND);
+    }
+
+    #[tokio::test]
+    async fn test_api_endpoint_responses_are_json() {
+        // Test that all API endpoints return JSON responses
+        let root_resp = root_endpoint().await;
+        let api_resp = api_info().await;
+        let connectivity_resp = connectivity_test().await;
+
+        // All should be axum::Json responses
+        assert!(root_resp.0.is_object());
+        assert!(api_resp.0.is_object());
+        assert!(connectivity_resp.0.is_object());
+    }
+
+    #[tokio::test]
+    async fn test_admin_placeholder_responses() {
+        // Test admin endpoints that return placeholder responses
+        let list_keys = list_api_keys().await;
+        let create_key = create_api_key().await;
+
+        // Should have expected structure
+        assert!(list_keys.0.get("api_keys").is_some());
+        assert!(create_key.0.get("message").is_some());
+
+        // Messages should indicate not implemented
+        let create_msg = create_key.0["message"].as_str().unwrap();
+        assert!(create_msg.contains("not yet implemented"));
+    }
+
+    #[tokio::test]
+    async fn test_openapi_spec_paths() {
+        let spec = serve_openapi_spec().await;
+        let paths = &spec.0["paths"];
+
+        // Check that paths object exists and has content
+        assert!(paths.is_object());
+
+        // The paths are in the JSON under the specific keys defined in serve_openapi_spec
+        assert!(!paths.as_object().unwrap().is_empty());
+    }
+
+    #[tokio::test]
+    async fn test_connectivity_test_compatibility() {
+        let response = connectivity_test().await;
+        let json_value = response.0;
+
+        // Should indicate Rdio Scanner compatibility
+        let message = json_value["message"].as_str().unwrap();
+        assert!(message.contains("Rdio Scanner"));
+        assert!(message.contains("compatible"));
+
+        // Should have status ok
+        assert_eq!(json_value["status"], "ok");
+    }
+
+    #[tokio::test]
+    async fn test_metrics_prometheus_format() {
+        let metrics = serve_metrics().await;
+
+        // Should follow Prometheus metrics format
+        assert!(metrics.starts_with("# HELP"));
+        assert!(metrics.contains("# TYPE"));
+        assert!(metrics.contains("counter"));
+
+        // Should have specific metric
+        assert!(metrics.contains("sdrtrunk_calls_total"));
+    }
+
+    #[tokio::test]
+    async fn test_api_docs_placeholder() {
+        let docs = serve_api_docs().await;
+
+        // Should mention OpenAPI spec location
+        assert!(docs.contains("/api/docs/openapi.json"));
+        assert!(docs.contains("API Documentation"));
+        assert!(docs.contains("OpenAPI specification"));
+    }
+}

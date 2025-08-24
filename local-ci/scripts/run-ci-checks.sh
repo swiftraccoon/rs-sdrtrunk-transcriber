@@ -4,6 +4,11 @@
 
 set -e
 
+# Set optimized compilation flags for 14 CPUs and 32GB RAM
+export CARGO_BUILD_JOBS=12  # Use 12 of 14 CPUs for building
+export CARGO_INCREMENTAL=0  # Clean builds for CI
+export RUSTFLAGS="-C codegen-units=4"  # Balance between speed and memory
+
 echo "==========================================
 Local CI/CD Test Runner
 ==========================================
@@ -110,13 +115,13 @@ run_check "Clippy (standard)" "cargo clippy --workspace --all-targets --all-feat
 run_check "Clippy (pedantic)" "cargo clippy --workspace --all-targets --all-features -j 2 -- -D warnings -W clippy::pedantic -A clippy::missing_errors_doc -A clippy::missing_panics_doc -A clippy::too_many_lines -A clippy::cast_possible_wrap -A clippy::cast_possible_truncation -A clippy::module_name_repetitions"
 
 # 5. Run tests with nextest
-run_check "Tests (nextest)" "cargo nextest run --workspace --all-features -j 2"
+run_check "Tests (nextest)" "cargo nextest run --workspace --all-features -j 8"
 
 # 6. Run doc tests
-run_check "Doc tests" "cargo test --doc --workspace --all-features -j 2"
+run_check "Doc tests" "cargo test --doc --workspace --all-features -j 8"
 
 # 7. Database integration tests (migrations already run at start)
-run_check "Database integration tests" "cargo test --package sdrtrunk-database --all-features"
+run_check "Database integration tests" "cargo test --package sdrtrunk-database --all-features -j 8"
 
 # 8. Documentation build
 run_check "Documentation" "cargo doc --workspace --all-features --no-deps -j 2"
@@ -136,7 +141,7 @@ run_check "Dependency check" "cargo machete"
 if [ "${RUN_COVERAGE:-false}" = "true" ]; then
     echo -e "${YELLOW}Running: Code Coverage${NC}"
     # Use single job to avoid OOM with coverage instrumentation
-    CARGO_BUILD_JOBS=1 cargo llvm-cov nextest --workspace --all-features --lcov --output-path lcov.info -j 1
+    cargo llvm-cov nextest --workspace --all-features --lcov --output-path lcov.info -j 8 --no-fail-fast
     echo -e "${GREEN}Coverage report generated at lcov.info${NC}\n"
 fi
 

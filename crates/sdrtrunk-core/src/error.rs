@@ -132,6 +132,7 @@ impl From<serde_json::Error> for Error {
 }
 
 #[cfg(test)]
+#[allow(clippy::missing_panics_doc)]
 #[allow(
     clippy::unreadable_literal,
     clippy::missing_panics_doc,
@@ -397,5 +398,137 @@ mod tests {
         };
 
         assert_eq!(format!("{}", error), "Resource exhausted: ");
+    }
+
+    #[test]
+    fn test_error_source_for_non_io_errors() {
+        let error = Error::Configuration {
+            message: "test".to_string(),
+        };
+        assert!(error.source().is_none());
+
+        let error = Error::Database("test".to_string());
+        assert!(error.source().is_none());
+
+        let error = Error::Validation {
+            field: "test".to_string(),
+            message: "test".to_string(),
+        };
+        assert!(error.source().is_none());
+    }
+
+    #[test]
+    fn test_serialization_error_source() {
+        let json_str = r#"{"invalid": json}"#;
+        let json_error = serde_json::from_str::<serde_json::Value>(json_str).unwrap_err();
+        let app_error = Error::from(json_error);
+
+        assert!(app_error.source().is_some());
+    }
+
+    #[test]
+    fn test_all_error_display_variants() {
+        let test_cases = vec![
+            (
+                Error::Io(io::Error::other("test")),
+                "I/O error:",
+            ),
+            (
+                Error::Configuration {
+                    message: "config error".to_string(),
+                },
+                "Configuration error: config error",
+            ),
+            (
+                Error::Validation {
+                    field: "field1".to_string(),
+                    message: "invalid".to_string(),
+                },
+                "Validation error: field1 - invalid",
+            ),
+            (
+                Error::Database("db error".to_string()),
+                "Database error: db error",
+            ),
+            (
+                Error::FileProcessing("file error".to_string()),
+                "File processing error: file error",
+            ),
+            (
+                Error::UnsupportedAudioFormat {
+                    format: "wav".to_string(),
+                },
+                "Audio format not supported: wav",
+            ),
+            (
+                Error::FileSizeExceeded {
+                    size: 200,
+                    max_size: 100,
+                },
+                "File size 200 exceeds maximum of 100",
+            ),
+            (
+                Error::Authentication("auth error".to_string()),
+                "Authentication failed: auth error",
+            ),
+            (
+                Error::RateLimitExceeded {
+                    message: "rate limit".to_string(),
+                },
+                "Rate limit exceeded: rate limit",
+            ),
+            (
+                Error::ResourceExhausted {
+                    resource: "memory".to_string(),
+                },
+                "Resource exhausted: memory",
+            ),
+            (
+                Error::Timeout { duration_ms: 5000 },
+                "Operation timed out after 5000ms",
+            ),
+            (
+                Error::NotFound {
+                    resource: "file.txt".to_string(),
+                },
+                "Resource not found: file.txt",
+            ),
+            (Error::Other("other error".to_string()), "other error"),
+        ];
+
+        for (error, expected_contains) in test_cases {
+            let display_str = format!("{}", error);
+            assert!(
+                display_str.contains(expected_contains),
+                "Error display '{}' should contain '{}'",
+                display_str,
+                expected_contains
+            );
+        }
+    }
+
+    #[test]
+    fn test_error_from_implementations() {
+        // Test automatic conversion from std::io::Error
+        let io_err = io::Error::new(io::ErrorKind::NotFound, "not found");
+        let _: Error = io_err.into();
+
+        // Test automatic conversion from serde_json::Error
+        let json_err = serde_json::from_str::<i32>("invalid").unwrap_err();
+        let _: Error = json_err.into();
+    }
+
+    #[test]
+    fn test_result_alias_usage() {
+        fn test_function() -> Result<i32> {
+            Ok(42)
+        }
+
+        fn test_error_function() -> Result<i32> {
+            Err(Error::Other("test error".to_string()))
+        }
+
+        assert_eq!(test_function().unwrap(), 42);
+        assert!(test_error_function().is_err());
     }
 }

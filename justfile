@@ -68,6 +68,15 @@ check:
 test:
     cargo nextest run --workspace --all-features
 
+# Run all tests including integration and property tests
+test-all:
+    @echo "🧪 Running unit tests..."
+    cargo nextest run --workspace --all-features --lib
+    @echo "🔗 Running integration tests..."
+    cargo nextest run --workspace --all-features --test '*'
+    @echo "🎯 Running property-based tests..."
+    cargo nextest run --workspace --all-features --test property_tests
+
 # Run tests with standard test runner
 test-std:
     cargo test --workspace --all-features
@@ -84,6 +93,11 @@ coverage:
 # Generate coverage in lcov format
 coverage-lcov:
     cargo llvm-cov nextest --workspace --all-features --lcov --output-path lcov.info
+
+# Generate detailed coverage report with branch coverage
+coverage-detailed:
+    cargo llvm-cov nextest --workspace --all-features --html --branch --show-missing-lines
+    open target/llvm-cov/html/index.html
 
 # Security audit
 audit:
@@ -158,8 +172,8 @@ check-all:
     just check  
     @echo "📎 Running clippy..."
     just lint
-    @echo "🧪 Running tests..."
-    just test
+    @echo "🧪 Running all tests..."
+    just test-all
     @echo "📚 Building docs..."
     just docs-build
     @echo "🔒 Security audit..."
@@ -230,7 +244,7 @@ ci:
     @echo "🔄 Running CI checks locally..."
     just fmt-check
     just lint-strict  
-    just test
+    just test-all
     just doctest
     just docs-build
     just audit
@@ -253,3 +267,63 @@ watch:
 # Watch for changes and run checks
 watch-check:
     cargo watch -x "check --workspace --all-targets --all-features"
+
+# Test specific crate
+test-crate crate:
+    cargo nextest run --package {{crate}} --all-features
+
+# Test with specific pattern
+test-pattern pattern:
+    cargo nextest run --workspace --all-features -E "test({{pattern}})"
+
+# Run only integration tests
+test-integration:
+    cargo nextest run --workspace --all-features --test '*'
+
+# Run only unit tests
+test-unit:
+    cargo nextest run --workspace --all-features --lib
+
+# Run property-based tests specifically
+test-property:
+    cargo nextest run --workspace --all-features --test property_tests
+
+# Generate coverage with minimum percentage check
+coverage-check percentage="90":
+    @echo "📊 Checking test coverage (minimum {{percentage}}%)..."
+    cargo llvm-cov nextest --workspace --all-features --fail-under {{percentage}}
+
+# Run mutation testing (requires cargo-mutants)
+test-mutation:
+    cargo mutants --workspace
+
+# Performance testing
+test-performance:
+    @echo "⚡ Running performance tests..."
+    cargo nextest run --workspace --all-features -E "test(performance)"
+
+# Stress testing
+test-stress:
+    @echo "💪 Running stress tests..."
+    cargo nextest run --workspace --all-features -E "test(stress)"
+
+# Database integration tests (requires Docker)
+test-database:
+    @echo "🗄️  Running database integration tests..."
+    cargo nextest run --workspace --all-features --test integration_database
+
+# API integration tests (requires Docker)  
+test-api:
+    @echo "🌐 Running API integration tests..."
+    cargo nextest run --workspace --all-features --test integration_api
+
+# Monitor service tests (requires Docker)
+test-monitor:
+    @echo "👀 Running monitor service tests..."
+    cargo nextest run --workspace --all-features --test integration_monitor
+
+# Generate test report
+test-report:
+    @echo "📋 Generating comprehensive test report..."
+    just coverage-detailed
+    @echo "📈 Coverage report generated in target/llvm-cov/html/"

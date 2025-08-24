@@ -272,3 +272,5 @@ docker-compose.override.yml
 .github/workflows/local.yml
 .claude/
 CLAUDE.md
+coverage.lcov
+final_lcov.info

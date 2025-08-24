@@ -8,7 +8,7 @@ use std::path::Path;
 /// # Errors
 ///
 /// Returns an error if the filename doesn't match the expected format.
-/// Format: `YYYYMMDD_HHMMSS`<System>_<Talkgroup>_FROM_<RadioID>.mp3
+/// Format: `YYYYMMDD_HHMMSS_<System>_<Talkgroup>_FROM_<RadioID>.mp3`
 pub fn parse_sdrtrunk_filename(filename: &str) -> Result<crate::types::FileData> {
     let base = Path::new(filename)
         .file_stem()
@@ -197,6 +197,7 @@ pub fn format_frequency(frequency_hz: i64) -> String {
 }
 
 #[cfg(test)]
+#[allow(clippy::missing_panics_doc)]
 #[allow(
     clippy::missing_panics_doc,
     clippy::unreadable_literal,

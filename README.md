@@ -1,7 +1,7 @@
 # (W.I.P.) Rust SDRTrunk Transcriber
 
 [![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)](https://www.gnu.org/licenses/gpl-3.0)
-[![Rust](https://img.shields.io/badge/rust-1.85.0%2B-orange.svg)](https://www.rust-lang.org)
+[![Rust](https://img.shields.io/badge/rust-1.89.0%2B-orange.svg)](https://www.rust-lang.org)
 [![Edition](https://img.shields.io/badge/edition-2024-red.svg)](https://doc.rust-lang.org/edition-guide/rust-2024/index.html)
 
 A Rust application for transcribing SDRTrunk P25 radio recordings with advanced features including speaker diarization, live streaming, and multi-interface support.

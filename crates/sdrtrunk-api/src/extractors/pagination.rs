@@ -194,6 +194,7 @@ impl<T> PaginatedResponse<T> {
 }
 
 #[cfg(test)]
+#[allow(clippy::missing_panics_doc)]
 mod tests {
     use super::*;
     use axum::http::{Request, Uri};
@@ -324,5 +325,153 @@ mod tests {
         assert_eq!(response.data.len(), 3);
         assert_eq!(response.pagination.total, 100);
         assert_eq!(response.pagination.page, 1);
+    }
+
+    #[tokio::test]
+    async fn test_pagination_extractor_invalid_query() {
+        let mut parts = create_test_parts_with_query("page=invalid");
+        let result = Pagination::from_request_parts(&mut parts, &()).await;
+        
+        assert!(result.is_err());
+    }
+
+    #[tokio::test]
+    async fn test_pagination_extractor_negative_offset() {
+        let mut parts = create_test_parts_with_query("offset=-1");
+        let result = Pagination::from_request_parts(&mut parts, &()).await;
+        
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_pagination_default() {
+        let pagination = Pagination::default();
+        
+        assert_eq!(pagination.page, Some(1));
+        assert_eq!(pagination.limit, Some(50));
+        assert_eq!(pagination.offset, None);
+        assert_eq!(pagination.page(), 1);
+        assert_eq!(pagination.limit(), 50);
+        assert_eq!(pagination.offset(), 0);
+    }
+
+    #[test]
+    fn test_pagination_limit_capping() {
+        let pagination = Pagination {
+            page: Some(1),
+            limit: Some(2000), // This would fail validation, but test capping
+            offset: None,
+        };
+        
+        // limit() method caps at 1000
+        assert_eq!(pagination.limit(), 1000);
+    }
+
+    #[test]
+    fn test_pagination_offset_priority() {
+        let pagination = Pagination {
+            page: Some(5),
+            limit: Some(10),
+            offset: Some(100), // Offset takes priority over page
+        };
+        
+        assert_eq!(pagination.offset(), 100);
+        assert_eq!(pagination.page(), 11); // (100 / 10) + 1
+    }
+
+    #[test]
+    fn test_pagination_next_prev_offset() {
+        let pagination = Pagination {
+            page: Some(2),
+            limit: Some(10),
+            offset: None,
+        };
+        
+        assert_eq!(pagination.next_offset(100), Some(20)); // 10 + 10
+        assert_eq!(pagination.prev_offset(), Some(0)); // 10 - 10
+    }
+
+    #[test]
+    fn test_pagination_no_next_offset() {
+        let pagination = Pagination {
+            page: Some(5),
+            limit: Some(10),
+            offset: None,
+        };
+        
+        // Last page (offset 40, limit 10, total 50)
+        assert_eq!(pagination.next_offset(50), None);
+    }
+
+    #[test]
+    fn test_pagination_no_prev_offset() {
+        let pagination = Pagination {
+            page: Some(1),
+            limit: Some(10),
+            offset: None,
+        };
+        
+        assert_eq!(pagination.prev_offset(), None);
+    }
+
+    #[test]
+    fn test_pagination_meta_edge_cases() {
+        // Test with zero total items
+        let pagination = Pagination::default();
+        let meta = PaginationMeta::new(&pagination, 0);
+        
+        assert_eq!(meta.total_pages, 1); // Always at least 1 page
+        assert!(!meta.has_next);
+        assert!(!meta.has_prev);
+        assert_eq!(meta.next_page, None);
+        assert_eq!(meta.prev_page, None);
+    }
+
+    #[test]
+    fn test_pagination_meta_last_page() {
+        let pagination = Pagination {
+            page: Some(10),
+            limit: Some(10),
+            offset: None,
+        };
+        
+        let meta = PaginationMeta::new(&pagination, 100); // Exactly 10 pages
+        
+        assert!(!meta.has_next);
+        assert!(meta.has_prev);
+        assert_eq!(meta.next_page, None);
+        assert_eq!(meta.prev_page, Some(9));
+    }
+
+    #[test]
+    fn test_pagination_meta_single_page() {
+        let pagination = Pagination::default();
+        let meta = PaginationMeta::new(&pagination, 25); // Less than page size
+        
+        assert_eq!(meta.total_pages, 1);
+        assert!(!meta.has_next);
+        assert!(!meta.has_prev);
+    }
+
+    #[test]
+    fn test_paginated_response_empty() {
+        let data: Vec<String> = vec![];
+        let pagination = Pagination::default();
+        
+        let response = PaginatedResponse::new(data, &pagination, 0);
+        
+        assert_eq!(response.data.len(), 0);
+        assert_eq!(response.pagination.total, 0);
+    }
+
+    #[tokio::test]
+    async fn test_pagination_extractor_mixed_params() {
+        let mut parts = create_test_parts_with_query("page=3&offset=100&limit=20");
+        let pagination = Pagination::from_request_parts(&mut parts, &()).await.unwrap();
+        
+        // Offset should take priority
+        assert_eq!(pagination.offset(), 100);
+        assert_eq!(pagination.limit(), 20);
+        assert_eq!(pagination.page(), 6); // (100 / 20) + 1
     }
 }

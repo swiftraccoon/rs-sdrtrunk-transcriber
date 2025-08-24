@@ -523,6 +523,7 @@ impl FileQueue {
 }
 
 #[cfg(test)]
+#[allow(clippy::missing_panics_doc)]
 mod tests {
     use super::*;
     use tempfile::TempDir;
@@ -588,5 +589,319 @@ mod tests {
             .unwrap();
         assert!(!should_retry);
         assert_eq!(queue.stats().failed_files, 1);
+    }
+
+    #[tokio::test]
+    async fn test_queue_persistence() {
+        let temp_dir = TempDir::new().unwrap();
+        let test_file = temp_dir.path().join("test.mp3");
+        let persist_file = temp_dir.path().join("queue.json");
+        tokio::fs::write(&test_file, b"test content").await.unwrap();
+
+        // Create queue with persistence
+        let queue = FileQueue::new(100, Some(persist_file.clone()), false, false);
+        let file_id = queue.enqueue(test_file.clone()).await.unwrap();
+        queue.save_to_persistence().await.unwrap();
+
+        // Create new queue and load persistence
+        let queue2 = FileQueue::new(100, Some(persist_file), false, false);
+        queue2.load_from_persistence().await.unwrap();
+        assert_eq!(queue2.stats().total_files, 1);
+
+        let file = queue2.dequeue().unwrap();
+        assert_eq!(file.id, file_id);
+        assert_eq!(file.path, test_file);
+    }
+
+    #[tokio::test]
+    async fn test_queue_stats() {
+        let temp_dir = TempDir::new().unwrap();
+        let test_file1 = temp_dir.path().join("test1.mp3");
+        let test_file2 = temp_dir.path().join("test2.mp3");
+        tokio::fs::write(&test_file1, b"test content 1")
+            .await
+            .unwrap();
+        tokio::fs::write(&test_file2, b"test content 2")
+            .await
+            .unwrap();
+
+        let queue = FileQueue::new(100, None, false, false);
+
+        // Test initial stats
+        let stats = queue.stats();
+        assert_eq!(stats.total_files, 0);
+        assert_eq!(stats.processing_files, 0);
+        assert_eq!(stats.failed_files, 0);
+        assert_eq!(stats.total_processed, 0);
+
+        // Enqueue files
+        let file1_id = queue.enqueue(test_file1).await.unwrap();
+        let file2_id = queue.enqueue(test_file2).await.unwrap();
+        assert_eq!(queue.stats().total_files, 2);
+
+        // Start processing
+        let _file1 = queue.dequeue().unwrap();
+        let _file2 = queue.dequeue().unwrap();
+        assert_eq!(queue.stats().processing_files, 2);
+        assert_eq!(queue.stats().total_files, 0);
+
+        // Complete one, fail the other
+        queue.mark_completed(file1_id).await.unwrap();
+        queue
+            .mark_failed(file2_id, "test error".to_string(), 0)
+            .await
+            .unwrap();
+
+        let stats = queue.stats();
+        assert_eq!(stats.processing_files, 0);
+        assert_eq!(stats.failed_files, 1);
+        assert_eq!(stats.total_processed, 1);
+    }
+
+    #[tokio::test]
+    async fn test_processing_and_failed_files() {
+        let temp_dir = TempDir::new().unwrap();
+        let test_file1 = temp_dir.path().join("test1.mp3");
+        let test_file2 = temp_dir.path().join("test2.mp3");
+        tokio::fs::write(&test_file1, b"test content 1")
+            .await
+            .unwrap();
+        tokio::fs::write(&test_file2, b"test content 2")
+            .await
+            .unwrap();
+
+        let queue = FileQueue::new(100, None, false, false);
+
+        let file1_id = queue.enqueue(test_file1.clone()).await.unwrap();
+        let file2_id = queue.enqueue(test_file2.clone()).await.unwrap();
+
+        // Start processing
+        let _file1 = queue.dequeue().unwrap();
+        let _file2 = queue.dequeue().unwrap();
+
+        // Check processing files
+        let processing = queue.processing_files();
+        assert_eq!(processing.len(), 2);
+        assert!(processing.iter().any(|f| f.id == file1_id));
+        assert!(processing.iter().any(|f| f.id == file2_id));
+
+        // Fail one file
+        queue
+            .mark_failed(file1_id, "test error".to_string(), 0)
+            .await
+            .unwrap();
+
+        // Check failed files
+        let failed = queue.failed_files();
+        assert_eq!(failed.len(), 1);
+        assert_eq!(failed[0].id, file1_id);
+        assert_eq!(failed[0].last_error, Some("test error".to_string()));
+        assert_eq!(failed[0].retry_count, 1);
+    }
+
+    #[tokio::test]
+    async fn test_retry_failed_file() {
+        let temp_dir = TempDir::new().unwrap();
+        let test_file = temp_dir.path().join("test.mp3");
+        tokio::fs::write(&test_file, b"test content").await.unwrap();
+
+        let queue = FileQueue::new(100, None, false, false);
+        let file_id = queue.enqueue(test_file.clone()).await.unwrap();
+
+        // Process and fail
+        let _file = queue.dequeue().unwrap();
+        queue
+            .mark_failed(file_id, "test error".to_string(), 0)
+            .await
+            .unwrap();
+        assert_eq!(queue.stats().failed_files, 1);
+
+        // Retry the failed file
+        queue.retry_failed(file_id).await.unwrap();
+        assert_eq!(queue.stats().failed_files, 0);
+        assert_eq!(queue.stats().total_files, 1);
+
+        // Should be able to dequeue again
+        let retried_file = queue.dequeue().unwrap();
+        assert_eq!(retried_file.id, file_id);
+        assert_eq!(retried_file.retry_count, 0);
+        assert_eq!(retried_file.last_error, None);
+    }
+
+    #[tokio::test]
+    async fn test_queue_max_size() {
+        let temp_dir = TempDir::new().unwrap();
+        let queue = FileQueue::new(2, None, false, false); // Max size 2
+
+        // Create test files
+        for i in 0..3 {
+            let test_file = temp_dir.path().join(format!("test{i}.mp3"));
+            tokio::fs::write(&test_file, b"test content").await.unwrap();
+
+            if i < 2 {
+                // First two should succeed
+                queue.enqueue(test_file).await.unwrap();
+            } else {
+                // Third should fail due to max size
+                let result = queue.enqueue(test_file).await;
+                assert!(result.is_err());
+            }
+        }
+
+        assert_eq!(queue.stats().total_files, 2);
+    }
+
+    #[tokio::test]
+    async fn test_priority_ordering() {
+        let temp_dir = TempDir::new().unwrap();
+        let queue = FileQueue::new(100, None, true, true); // Enable priority by age and size
+
+        // Create files of different sizes and times
+        let small_file = temp_dir.path().join("small.mp3");
+        let large_file = temp_dir.path().join("large.mp3");
+
+        tokio::fs::write(&small_file, b"small").await.unwrap();
+        tokio::fs::write(&large_file, b"large file content here")
+            .await
+            .unwrap();
+
+        // Enqueue in reverse priority order
+        let small_id = queue.enqueue(small_file).await.unwrap();
+        tokio::time::sleep(tokio::time::Duration::from_millis(10)).await; // Ensure different timestamps
+        let large_id = queue.enqueue(large_file).await.unwrap();
+
+        // Smaller, newer file should come first due to priority (smaller files have higher priority)
+        let first_file = queue.dequeue().unwrap();
+        assert_eq!(first_file.id, small_id);
+
+        let second_file = queue.dequeue().unwrap();
+        assert_eq!(second_file.id, large_id);
+    }
+
+    #[tokio::test]
+    async fn test_error_handling() {
+        let queue = FileQueue::new(100, None, false, false);
+        let invalid_id = Uuid::new_v4();
+
+        // Test marking non-existent file as completed
+        let result = queue.mark_completed(invalid_id).await;
+        assert!(result.is_err());
+
+        // Test marking non-existent file as failed
+        let result = queue.mark_failed(invalid_id, "error".to_string(), 3).await;
+        assert!(result.is_err());
+
+        // Test retrying non-existent failed file
+        let result = queue.retry_failed(invalid_id).await;
+        assert!(result.is_err());
+
+        // Test enqueuing non-existent file
+        let non_existent_file = std::path::PathBuf::from("/non/existent/file.mp3");
+        let result = queue.enqueue(non_existent_file).await;
+        assert!(result.is_err());
+    }
+
+    #[tokio::test]
+    async fn test_queue_clear_operations() {
+        let temp_dir = TempDir::new().unwrap();
+        let test_file = temp_dir.path().join("test.mp3");
+        tokio::fs::write(&test_file, b"test content").await.unwrap();
+
+        let queue = FileQueue::new(100, None, false, false);
+        let file_id = queue.enqueue(test_file).await.unwrap();
+
+        // Process and fail the file
+        let _file = queue.dequeue().unwrap();
+        queue
+            .mark_failed(file_id, "test error".to_string(), 0)
+            .await
+            .unwrap();
+
+        assert_eq!(queue.stats().failed_files, 1);
+        assert_eq!(queue.failed_files().len(), 1);
+
+        // Clear failed files
+        let _ = queue.clear_failed();
+        assert_eq!(queue.stats().failed_files, 0);
+        assert_eq!(queue.failed_files().len(), 0);
+    }
+
+    #[test]
+    fn test_queued_file_ordering() {
+        let now = Utc::now();
+
+        let file1 = QueuedFile {
+            id: Uuid::new_v4(),
+            path: "/test1.mp3".into(),
+            size: 1000,
+            queued_at: now,
+            modified_at: now,
+            priority: 1,
+            retry_count: 0,
+            last_error: None,
+            metadata: FileMetadata {
+                extension: Some("mp3".to_string()),
+                stem: "test".to_string(),
+                is_symlink: false,
+                checksum: Some("abc123".to_string()),
+            },
+        };
+
+        let file2 = QueuedFile {
+            id: Uuid::new_v4(),
+            path: "/test2.mp3".into(),
+            size: 2000,
+            queued_at: now,
+            modified_at: now,
+            priority: 2,
+            retry_count: 0,
+            last_error: None,
+            metadata: FileMetadata {
+                extension: Some("mp3".to_string()),
+                stem: "test".to_string(),
+                is_symlink: false,
+                checksum: Some("abc123".to_string()),
+            },
+        };
+
+        // Higher priority should come first
+        assert!(file2 > file1);
+        assert!(file1 < file2);
+        assert_eq!(file1.cmp(&file2), Ordering::Less);
+        assert_eq!(file2.cmp(&file1), Ordering::Greater);
+        assert_eq!(file1.cmp(&file1), Ordering::Equal);
+    }
+
+    #[test]
+    fn test_file_metadata_serialization() {
+        let metadata = FileMetadata {
+            extension: Some("mp3".to_string()),
+            stem: "test_file".to_string(),
+            is_symlink: false,
+            checksum: Some("123abc456def".to_string()),
+        };
+
+        let json = serde_json::to_string(&metadata).unwrap();
+        let deserialized: FileMetadata = serde_json::from_str(&json).unwrap();
+        assert_eq!(metadata, deserialized);
+    }
+
+    #[test]
+    fn test_queue_stats_default() {
+        let stats = QueueStats {
+            total_files: 0,
+            processing_files: 0,
+            failed_files: 0,
+            average_wait_time: 0.0,
+            oldest_queued: None,
+            total_processed: 0,
+        };
+
+        assert_eq!(stats.total_files, 0);
+        assert_eq!(stats.processing_files, 0);
+        assert_eq!(stats.failed_files, 0);
+        assert_eq!(stats.average_wait_time, 0.0);
+        assert!(stats.oldest_queued.is_none());
+        assert_eq!(stats.total_processed, 0);
     }
 }

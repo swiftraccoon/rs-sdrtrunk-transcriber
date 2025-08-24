@@ -66,6 +66,7 @@ pub const fn once<T>() -> OnceLock<T> {
 }
 
 #[cfg(test)]
+#[allow(clippy::missing_panics_doc)]
 #[allow(
     clippy::missing_panics_doc,
     clippy::uninlined_format_args,

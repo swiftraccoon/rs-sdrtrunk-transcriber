@@ -326,6 +326,7 @@ impl Default for Config {
 }
 
 #[cfg(test)]
+#[allow(clippy::missing_panics_doc)]
 #[allow(
     clippy::unreadable_literal,
     clippy::missing_panics_doc,

@@ -218,6 +218,7 @@ pub fn optional_auth_layer() -> impl tower::Layer<axum::routing::Route> + Clone 
 }
 
 #[cfg(test)]
+#[allow(clippy::missing_panics_doc)]
 mod tests {
     use super::*;
     use axum::http::HeaderValue;
@@ -249,6 +250,43 @@ mod tests {
     }
 
     #[test]
+    fn test_extract_api_key_invalid_x_api_key_format() {
+        let mut headers = HeaderMap::new();
+        headers.insert(API_KEY_HEADER, HeaderValue::from_bytes(&[0xFF, 0xFE]).unwrap());
+        
+        let result = extract_api_key(&headers);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_extract_api_key_invalid_authorization_format() {
+        let mut headers = HeaderMap::new();
+        headers.insert(AUTH_HEADER, HeaderValue::from_static("Basic dGVzdA=="));
+        
+        let result = extract_api_key(&headers);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_extract_api_key_malformed_authorization() {
+        let mut headers = HeaderMap::new();
+        headers.insert(AUTH_HEADER, HeaderValue::from_static("Bearer"));
+        
+        let result = extract_api_key(&headers);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_extract_api_key_prefers_x_api_key() {
+        let mut headers = HeaderMap::new();
+        headers.insert(API_KEY_HEADER, HeaderValue::from_static("x-api-key-value"));
+        headers.insert(AUTH_HEADER, HeaderValue::from_static("Bearer bearer-value"));
+        
+        let result = extract_api_key(&headers).unwrap();
+        assert_eq!(result, "x-api-key-value");
+    }
+
+    #[test]
     fn test_get_client_ip_from_forwarded_header() {
         let mut headers = HeaderMap::new();
         headers.insert("X-Forwarded-For", HeaderValue::from_static("192.168.1.1, 10.0.0.1"));
@@ -256,5 +294,75 @@ mod tests {
         let request = Request::builder().body(()).unwrap();
         let ip = get_client_ip(&headers, &request);
         assert_eq!(ip, "192.168.1.1");
+    }
+
+    #[test]
+    fn test_get_client_ip_from_real_ip_header() {
+        let mut headers = HeaderMap::new();
+        headers.insert("X-Real-IP", HeaderValue::from_static("10.0.0.5"));
+        
+        let request = Request::builder().body(()).unwrap();
+        let ip = get_client_ip(&headers, &request);
+        assert_eq!(ip, "10.0.0.5");
+    }
+
+    #[test]
+    fn test_get_client_ip_no_headers() {
+        let headers = HeaderMap::new();
+        let request = Request::builder().body(()).unwrap();
+        
+        let ip = get_client_ip(&headers, &request);
+        assert_eq!(ip, "unknown");
+    }
+
+    #[test]
+    fn test_get_client_ip_invalid_forwarded_header() {
+        let mut headers = HeaderMap::new();
+        headers.insert("X-Forwarded-For", HeaderValue::from_bytes(&[0xFF, 0xFE]).unwrap());
+        
+        let request = Request::builder().body(()).unwrap();
+        let ip = get_client_ip(&headers, &request);
+        assert_eq!(ip, "unknown");
+    }
+
+    #[test]
+    fn test_get_client_ip_empty_forwarded_header() {
+        let mut headers = HeaderMap::new();
+        headers.insert("X-Forwarded-For", HeaderValue::from_static(""));
+        
+        let request = Request::builder().body(()).unwrap();
+        let ip = get_client_ip(&headers, &request);
+        assert_eq!(ip, "unknown");
+    }
+
+    #[test]
+    fn test_get_client_ip_whitespace_in_forwarded() {
+        let mut headers = HeaderMap::new();
+        headers.insert("X-Forwarded-For", HeaderValue::from_static("  192.168.1.100  , 10.0.0.1"));
+        
+        let request = Request::builder().body(()).unwrap();
+        let ip = get_client_ip(&headers, &request);
+        assert_eq!(ip, "192.168.1.100");
+    }
+
+    #[test]
+    fn test_get_client_ip_prefers_forwarded_over_real_ip() {
+        let mut headers = HeaderMap::new();
+        headers.insert("X-Forwarded-For", HeaderValue::from_static("192.168.1.1"));
+        headers.insert("X-Real-IP", HeaderValue::from_static("10.0.0.1"));
+        
+        let request = Request::builder().body(()).unwrap();
+        let ip = get_client_ip(&headers, &request);
+        assert_eq!(ip, "192.168.1.1");
+    }
+
+    #[test]
+    fn test_get_client_ip_invalid_real_ip_header() {
+        let mut headers = HeaderMap::new();
+        headers.insert("X-Real-IP", HeaderValue::from_bytes(&[0xFF, 0xFE]).unwrap());
+        
+        let request = Request::builder().body(()).unwrap();
+        let ip = get_client_ip(&headers, &request);
+        assert_eq!(ip, "unknown");
     }
 }

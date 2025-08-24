@@ -200,6 +200,7 @@ impl ApiKeyPermissions {
 }
 
 #[cfg(test)]
+#[allow(clippy::missing_panics_doc)]
 mod tests {
     use super::*;
     use chrono::{DateTime, Utc};
@@ -273,5 +274,202 @@ mod tests {
         
         let permissions = ApiKeyPermissions::new(api_key_info);
         assert!(permissions.check().is_err());
+    }
+
+    #[test]
+    fn test_api_key_info_no_expiration() {
+        let api_key_info = ApiKeyInfo {
+            api_key: create_test_api_key(),
+        };
+        
+        assert!(!api_key_info.is_expired());
+        assert!(api_key_info.time_until_expiration().is_none());
+    }
+
+    #[test]
+    fn test_api_key_info_future_expiration() {
+        let mut api_key = create_test_api_key();
+        api_key.expires_at = Some(Utc::now() + chrono::Duration::hours(24));
+        
+        let api_key_info = ApiKeyInfo { api_key };
+        assert!(!api_key_info.is_expired());
+        
+        let time_left = api_key_info.time_until_expiration().unwrap();
+        assert!(time_left.num_hours() > 23);
+        assert!(time_left.num_hours() < 25);
+    }
+
+    #[test]
+    fn test_api_key_info_system_access_no_restrictions() {
+        let mut api_key = create_test_api_key();
+        api_key.allowed_systems = None;
+        
+        let api_key_info = ApiKeyInfo { api_key };
+        
+        // Should allow access to any system when no restrictions
+        assert!(api_key_info.can_access_system("any-system"));
+        assert!(api_key_info.can_access_system("another-system"));
+    }
+
+    #[test]
+    fn test_api_key_info_system_access_empty_list() {
+        let mut api_key = create_test_api_key();
+        api_key.allowed_systems = Some(vec![]);
+        
+        let api_key_info = ApiKeyInfo { api_key };
+        
+        // Empty list should allow all systems
+        assert!(api_key_info.can_access_system("any-system"));
+    }
+
+    #[test]
+    fn test_api_key_info_ip_access_no_restrictions() {
+        let mut api_key = create_test_api_key();
+        api_key.allowed_ips = None;
+        
+        let api_key_info = ApiKeyInfo { api_key };
+        
+        // Should allow access from any IP when no restrictions
+        assert!(api_key_info.can_access_from_ip("192.168.1.999"));
+        assert!(api_key_info.can_access_from_ip("10.0.0.1"));
+    }
+
+    #[test]
+    fn test_api_key_info_ip_access_empty_list() {
+        let mut api_key = create_test_api_key();
+        api_key.allowed_ips = Some(vec![]);
+        
+        let api_key_info = ApiKeyInfo { api_key };
+        
+        // Empty list should allow all IPs
+        assert!(api_key_info.can_access_from_ip("192.168.1.999"));
+    }
+
+    #[test]
+    fn test_api_key_info_getters() {
+        let api_key_info = ApiKeyInfo {
+            api_key: create_test_api_key(),
+        };
+        
+        assert_eq!(api_key_info.key_id(), "test-key");
+        assert_eq!(api_key_info.description(), Some("Test API Key"));
+        assert_eq!(api_key_info.total_requests(), 100);
+    }
+
+    #[test]
+    fn test_api_key_info_no_description() {
+        let mut api_key = create_test_api_key();
+        api_key.description = None;
+        
+        let api_key_info = ApiKeyInfo { api_key };
+        
+        assert_eq!(api_key_info.description(), None);
+    }
+
+    #[test]
+    fn test_api_key_info_no_total_requests() {
+        let mut api_key = create_test_api_key();
+        api_key.total_requests = None;
+        
+        let api_key_info = ApiKeyInfo { api_key };
+        
+        assert_eq!(api_key_info.total_requests(), 0);
+    }
+
+    #[test]
+    fn test_optional_api_key_info_with_key() {
+        let api_key_info = ApiKeyInfo {
+            api_key: create_test_api_key(),
+        };
+        
+        let optional = OptionalApiKeyInfo(Some(api_key_info));
+        
+        assert!(optional.is_authenticated());
+        assert!(optional.api_key().is_some());
+        assert!(optional.require().is_ok());
+    }
+
+    #[test]
+    fn test_optional_api_key_info_without_key() {
+        let optional = OptionalApiKeyInfo(None);
+        
+        assert!(!optional.is_authenticated());
+        assert!(optional.api_key().is_none());
+        assert!(optional.require().is_err());
+    }
+
+    #[test]
+    fn test_api_key_permissions_ip_denied() {
+        let api_key_info = ApiKeyInfo {
+            api_key: create_test_api_key(),
+        };
+        
+        let permissions = ApiKeyPermissions::new(api_key_info)
+            .with_client_ip("192.168.1.999"); // Not in allowed list
+        
+        let result = permissions.check();
+        assert!(result.is_err());
+        
+        let error = result.unwrap_err();
+        assert_eq!(error.status_code, axum::http::StatusCode::FORBIDDEN);
+        assert!(error.message.contains("IP"));
+    }
+
+    #[test]
+    fn test_api_key_permissions_no_system_required() {
+        let api_key_info = ApiKeyInfo {
+            api_key: create_test_api_key(),
+        };
+        
+        let permissions = ApiKeyPermissions::new(api_key_info);
+        
+        assert!(permissions.check().is_ok());
+    }
+
+    #[test]
+    fn test_api_key_permissions_no_ip_check() {
+        let api_key_info = ApiKeyInfo {
+            api_key: create_test_api_key(),
+        };
+        
+        let permissions = ApiKeyPermissions::new(api_key_info)
+            .require_system_access("system1");
+        
+        assert!(permissions.check().is_ok());
+    }
+
+    #[test]
+    fn test_api_key_permissions_multiple_errors() {
+        let mut api_key = create_test_api_key();
+        api_key.expires_at = Some(Utc::now() - chrono::Duration::hours(1)); // Expired
+        
+        let api_key_info = ApiKeyInfo { api_key };
+        
+        let permissions = ApiKeyPermissions::new(api_key_info)
+            .require_system_access("system3") // Not allowed
+            .with_client_ip("192.168.1.999"); // Not allowed
+        
+        // Should fail on first check (system access)
+        let result = permissions.check();
+        assert!(result.is_err());
+        
+        // The error should be about system access since that's checked first
+        let error = result.unwrap_err();
+        assert!(error.message.contains("system"));
+    }
+
+    #[test] 
+    fn test_api_key_permissions_builder_pattern() {
+        let api_key_info = ApiKeyInfo {
+            api_key: create_test_api_key(),
+        };
+        
+        let permissions = ApiKeyPermissions::new(api_key_info)
+            .require_system_access("system1")
+            .with_client_ip("192.168.1.1");
+        
+        assert_eq!(permissions.required_system, Some("system1".to_string()));
+        assert_eq!(permissions.client_ip, Some("192.168.1.1".to_string()));
+        assert!(permissions.check().is_ok());
     }
 }

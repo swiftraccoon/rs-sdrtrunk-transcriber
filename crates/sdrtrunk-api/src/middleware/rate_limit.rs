@@ -239,9 +239,11 @@ pub async fn cleanup_rate_limiters() {
 }
 
 #[cfg(test)]
+#[allow(clippy::missing_panics_doc)]
 mod tests {
     use super::*;
     use axum::http::HeaderValue;
+    use std::time::Instant;
 
     #[test]
     fn test_get_client_key_with_api_key() {
@@ -279,11 +281,179 @@ mod tests {
     }
 
     #[test]
+    fn test_get_client_key_fallback_to_ip() {
+        let headers = HeaderMap::new();
+        let request = Request::builder().body(()).unwrap();
+        
+        let key = get_client_key(&headers, &request);
+        assert_eq!(key, "ip:unknown"); // Falls back to "unknown" when no IP is available
+    }
+
+    #[test]
+    fn test_get_client_ip_from_forwarded_header() {
+        let mut headers = HeaderMap::new();
+        headers.insert("X-Forwarded-For", HeaderValue::from_static("192.168.1.1, 10.0.0.1"));
+        
+        let request = Request::builder().body(()).unwrap();
+        let ip = get_client_ip(&headers, &request);
+        assert_eq!(ip, "192.168.1.1");
+    }
+
+    #[test]
+    fn test_get_client_ip_from_real_ip_header() {
+        let mut headers = HeaderMap::new();
+        headers.insert("X-Real-IP", HeaderValue::from_static("10.0.0.5"));
+        
+        let request = Request::builder().body(()).unwrap();
+        let ip = get_client_ip(&headers, &request);
+        assert_eq!(ip, "10.0.0.5");
+    }
+
+    #[test]
+    fn test_get_client_ip_no_headers() {
+        let headers = HeaderMap::new();
+        let request = Request::builder().body(()).unwrap();
+        
+        let ip = get_client_ip(&headers, &request);
+        assert_eq!(ip, "unknown");
+    }
+
+    #[test]
+    fn test_get_client_ip_invalid_forwarded_header() {
+        let mut headers = HeaderMap::new();
+        headers.insert("X-Forwarded-For", HeaderValue::from_bytes(&[0xFF, 0xFE]).unwrap());
+        
+        let request = Request::builder().body(()).unwrap();
+        let ip = get_client_ip(&headers, &request);
+        assert_eq!(ip, "unknown");
+    }
+
+    #[test]
+    fn test_get_client_ip_empty_forwarded_header() {
+        let mut headers = HeaderMap::new();
+        headers.insert("X-Forwarded-For", HeaderValue::from_static(""));
+        
+        let request = Request::builder().body(()).unwrap();
+        let ip = get_client_ip(&headers, &request);
+        assert_eq!(ip, "unknown");
+    }
+
+    #[test]
+    fn test_get_client_ip_whitespace_in_forwarded() {
+        let mut headers = HeaderMap::new();
+        headers.insert("X-Forwarded-For", HeaderValue::from_static("  192.168.1.100  , 10.0.0.1"));
+        
+        let request = Request::builder().body(()).unwrap();
+        let ip = get_client_ip(&headers, &request);
+        assert_eq!(ip, "192.168.1.100");
+    }
+
+    #[test]
+    fn test_get_client_ip_prefers_forwarded_over_real_ip() {
+        let mut headers = HeaderMap::new();
+        headers.insert("X-Forwarded-For", HeaderValue::from_static("192.168.1.1"));
+        headers.insert("X-Real-IP", HeaderValue::from_static("10.0.0.1"));
+        
+        let request = Request::builder().body(()).unwrap();
+        let ip = get_client_ip(&headers, &request);
+        assert_eq!(ip, "192.168.1.1");
+    }
+
+    #[test]
+    fn test_get_client_ip_invalid_real_ip_header() {
+        let mut headers = HeaderMap::new();
+        headers.insert("X-Real-IP", HeaderValue::from_bytes(&[0xFF, 0xFE]).unwrap());
+        
+        let request = Request::builder().body(()).unwrap();
+        let ip = get_client_ip(&headers, &request);
+        assert_eq!(ip, "unknown");
+    }
+
+    #[test]
     fn test_generate_request_id() {
         let id1 = generate_request_id();
         let id2 = generate_request_id();
         
         assert_eq!(id1.len(), 8); // 4 bytes = 8 hex chars
         assert_ne!(id1, id2); // Should be different
+        
+        // Verify it's valid hexadecimal
+        assert!(id1.chars().all(|c| c.is_ascii_hexdigit()));
+        assert!(id2.chars().all(|c| c.is_ascii_hexdigit()));
+    }
+
+    #[test]
+    fn test_generate_request_id_multiple() {
+        let mut ids = Vec::new();
+        for _ in 0..100 {
+            ids.push(generate_request_id());
+        }
+        
+        // All should be unique (very high probability)
+        let unique_count = ids.iter().collect::<std::collections::HashSet<_>>().len();
+        assert_eq!(unique_count, ids.len());
+        
+        // All should be 8 characters
+        assert!(ids.iter().all(|id| id.len() == 8));
+    }
+
+    #[tokio::test]
+    async fn test_cleanup_rate_limiters() {
+        // This is a simple test to ensure the function doesn't panic
+        cleanup_rate_limiters().await;
+        
+        // Call it multiple times to test the timing logic
+        cleanup_rate_limiters().await;
+        cleanup_rate_limiters().await;
+    }
+
+    #[tokio::test]
+    async fn test_get_rate_limiter_creates_limiter() {
+        use crate::config::{ApiConfig, Config, SecurityConfig};
+        
+        let config = Config {
+            api: ApiConfig {
+                rate_limit: 60,
+                ..Default::default()
+            },
+            security: SecurityConfig::default(),
+            ..Default::default()
+        };
+        
+        let state = Arc::new(AppState {
+            config: Arc::new(config),
+            pool: sqlx::SqlitePool::connect(":memory:").await.unwrap(),
+        });
+        
+        let limiter1 = get_rate_limiter(&state, "test-client").await;
+        let limiter2 = get_rate_limiter(&state, "test-client").await;
+        
+        // Should return the same instance for the same client
+        assert!(Arc::ptr_eq(&limiter1, &limiter2));
+        
+        // Different client should get different limiter
+        let limiter3 = get_rate_limiter(&state, "other-client").await;
+        assert!(!Arc::ptr_eq(&limiter1, &limiter3));
+    }
+
+    #[test]
+    fn test_add_rate_limit_headers() {
+        let mut response = Response::builder()
+            .status(StatusCode::OK)
+            .body(axum::body::Body::empty())
+            .unwrap();
+        
+        let quota = Quota::per_minute(60);
+        let rate_limiter = RateLimiter::direct(quota);
+        
+        add_rate_limit_headers(&mut response, &rate_limiter);
+        
+        let headers = response.headers();
+        assert!(headers.contains_key("X-RateLimit-Limit"));
+        assert!(headers.contains_key("X-RateLimit-Remaining"));
+        assert!(headers.contains_key("X-RateLimit-Reset"));
+        
+        // Check that limit is set to expected value
+        assert_eq!(headers.get("X-RateLimit-Limit").unwrap(), "60");
     }
 }
