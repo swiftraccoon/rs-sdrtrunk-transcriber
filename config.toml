@@ -27,3 +27,16 @@ watch_dir = "/tmp/sdrtrunk/watch"
 archive_dir = "/tmp/sdrtrunk/archive"
 failed_dir = "/tmp/sdrtrunk/failed"
 temp_dir = "/tmp/sdrtrunk/temp"
+
+[transcription]
+enabled = true
+service = "whisperx"
+service_port = 8002
+model_size = "base"
+device = "cpu"
+compute_type = "int8"
+batch_size = 8
+workers = 2
+queue_size = 10
+timeout_seconds = 300
+language = "en"

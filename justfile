@@ -2,102 +2,75 @@
 # Install just: cargo install just
 # Usage: just <recipe>
 
-# Default recipe
+# Default recipe - show available commands
 default:
     @just --list
 
 # Install required development tools
 install-tools:
+    cargo install just --locked
     cargo install cargo-audit --locked
-    cargo install cargo-deny --locked  
+    cargo install cargo-deny --locked
     cargo install cargo-machete --locked
     cargo install cargo-nextest --locked
     cargo install cargo-llvm-cov --locked
-    cargo install cargo-expand --locked
-    cargo install cargo-udeps --locked
-    cargo install cargo-bloat --locked
-    cargo install cargo-criterion --locked
-    cargo install critcmp --locked
-    cargo install flamegraph --locked
+    cargo install sqlx-cli --no-default-features --features rustls,postgres --locked
 
-# Format all Rust code
-fmt:
-    cargo fmt --all
+# Development setup (run once after cloning)
+setup:
+    rustup component add rustfmt clippy rust-src rust-analyzer llvm-tools-preview
+    just install-tools
+    cargo check --workspace
 
-# Check formatting without making changes
-fmt-check:
-    cargo fmt --all -- --check
+# Format code (use --check to verify without modifying)
+fmt *args:
+    cargo fmt --all {{args}}
 
-# Run clippy with strict settings
-lint:
-    cargo clippy --workspace --all-targets --all-features -- \
-        -D warnings \
-        -D clippy::all \
-        -D clippy::pedantic \
-        -D clippy::nursery \
-        -D clippy::cargo \
-        -A clippy::multiple_crate_versions
-
-# Run clippy with maximum strictness (including restriction lints)
-lint-strict:
-    cargo clippy --workspace --all-targets --all-features -- \
-        -D warnings \
-        -D clippy::all \
-        -D clippy::pedantic \
-        -D clippy::nursery \
-        -D clippy::cargo \
-        -D clippy::restriction \
-        -A clippy::blanket_clippy_restriction_lints \
-        -A clippy::implicit_return \
-        -A clippy::missing_docs_in_private_items \
-        -A clippy::question_mark_used \
-        -A clippy::single_call_fn \
-        -A clippy::std_instead_of_alloc \
-        -A clippy::std_instead_of_core \
-        -A clippy::shadow_reuse \
-        -A clippy::shadow_same \
-        -A clippy::shadow_unrelated \
-        -A clippy::separated_literal_suffix \
-        -A clippy::mod_module_files
+# Run clippy lints (use CLIPPY_FLAGS env var for different strictness levels)
+lint flags="":
+    #!/usr/bin/env bash
+    if [ -n "{{flags}}" ]; then
+        CLIPPY_FLAGS="{{flags}}"
+    elif [ -z "$CLIPPY_FLAGS" ]; then
+        CLIPPY_FLAGS="-D warnings"
+    fi
+    cargo clippy --workspace --all-targets --all-features -- $CLIPPY_FLAGS
 
 # Check code compilation
 check:
     cargo check --workspace --all-targets --all-features
 
-# Run all tests with nextest
-test:
-    cargo nextest run --workspace --all-features
+# Run tests (use TEST_ARGS env var or args for filtering)
+test args="":
+    cargo nextest run --workspace --all-features {{args}}
 
-# Run all tests including integration and property tests
-test-all:
-    @echo "🧪 Running unit tests..."
-    cargo nextest run --workspace --all-features --lib
-    @echo "🔗 Running integration tests..."
-    cargo nextest run --workspace --all-features --test '*'
-    @echo "🎯 Running property-based tests..."
-    cargo nextest run --workspace --all-features --test property_tests
-
-# Run tests with standard test runner
-test-std:
-    cargo test --workspace --all-features
-
-# Run doctests
-doctest:
+# Run doc tests
+test-doc:
     cargo test --doc --workspace --all-features
 
-# Generate and open test coverage report
-coverage:
-    cargo llvm-cov nextest --workspace --all-features --html
-    open target/llvm-cov/html/index.html
+# Generate test coverage (use --html for HTML report, --lcov for lcov format)
+coverage args="":
+    #!/usr/bin/env bash
+    if [[ "{{args}}" == *"--html"* ]]; then
+        cargo llvm-cov nextest --workspace --all-features --html --fail-under 90
+        open target/llvm-cov/html/index.html
+    elif [[ "{{args}}" == *"--lcov"* ]]; then
+        cargo llvm-cov nextest --workspace --all-features --lcov --output-path lcov.info
+    else
+        cargo llvm-cov nextest --workspace --all-features --fail-under 90
+    fi
 
-# Generate coverage in lcov format
-coverage-lcov:
-    cargo llvm-cov nextest --workspace --all-features --lcov --output-path lcov.info
+# Build in release mode
+build:
+    cargo build --workspace --release
 
-# Generate detailed coverage report with branch coverage
-coverage-detailed:
-    cargo llvm-cov nextest --workspace --all-features --html --branch --show-missing-lines
-    open target/llvm-cov/html/index.html
+# Build documentation (use --no-open to skip browser)
+docs *args:
+    cargo doc --workspace --all-features --no-deps {{args}}
+
+# Clean build artifacts
+clean:
+    cargo clean
 
 # Security audit
 audit:
@@ -108,222 +81,83 @@ deny:
     cargo deny check
 
 # Find unused dependencies
-machete:
+unused-deps:
     cargo machete
 
-# Find unused dependencies (requires nightly)
-udeps:
-    cargo +nightly udeps --workspace --all-targets
-
-# Build in release mode
-build-release:
-    cargo build --workspace --release
-
-# Build documentation
-docs:
-    cargo doc --workspace --all-features --no-deps --open
-
-# Build documentation without opening
-docs-build:
-    cargo doc --workspace --all-features --no-deps
-
-# Clean build artifacts
-clean:
-    cargo clean
-
-# Run benchmarks
-bench:
-    cargo bench --workspace --all-features
-
-# Run specific benchmark
-bench-name name:
-    cargo bench --workspace --all-features {{name}}
-
-# Profile binary size
-bloat:
-    cargo bloat --release --crates
-
-# Profile compilation time
-timings:
-    cargo build --workspace --all-features --timings
-
-# Generate flamegraph for performance profiling (Linux only)
-flamegraph:
-    cargo flamegraph --bench main_bench
-
-# Expand macros for debugging
-expand crate="" file="":
-    #!/usr/bin/env bash
-    if [ -n "{{crate}}" ]; then
-        if [ -n "{{file}}" ]; then
-            cargo expand --package {{crate}} --bin {{file}}
-        else
-            cargo expand --package {{crate}}
-        fi
-    else
-        cargo expand
-    fi
-
-# Full quality check (formatting, linting, tests, docs, security)
-check-all:
-    @echo "🔧 Formatting code..."
-    just fmt-check
-    @echo "📋 Checking compilation..."
-    just check  
-    @echo "📎 Running clippy..."
-    just lint
-    @echo "🧪 Running all tests..."
-    just test-all
-    @echo "📚 Building docs..."
-    just docs-build
-    @echo "🔒 Security audit..."
-    just audit
-    @echo "🚫 Checking dependencies..."
-    just deny
-    @echo "✅ All checks passed!"
-
-# Pre-commit hook (run before committing)
-pre-commit:
-    just fmt
-    just check-all
-
-# Release preparation
-pre-release:
-    @echo "🚀 Preparing for release..."
-    just check-all
-    just lint-strict
-    just coverage-lcov
-    just machete
-    @echo "📦 Building release..."
-    just build-release
-    @echo "🎯 Ready for release!"
-
-# Development setup (run once after cloning)
-setup:
-    @echo "🔧 Installing development tools..."
-    just install-tools
-    @echo "🦀 Setting up Rust..."
-    rustup component add rustfmt clippy rust-src rust-analyzer llvm-tools
-    @echo "📦 Building project..."
-    just check
-    @echo "✅ Development setup complete!"
-
-# Update all tools and dependencies
-update:
-    @echo "🔄 Updating Rust toolchain..."
-    rustup update
-    @echo "🔄 Updating cargo tools..."
-    just install-tools
-    @echo "🔄 Updating dependencies..."
-    cargo update
-    @echo "✅ Update complete!"
-
-# Run local CI in containers (with test database)
-ci-local:
-    ./check-ci.sh
-
-# Quick local CI check
-ci-quick:
-    ./check-ci.sh --quick
-
-# Full local CI with coverage
-ci-full:
-    ./check-ci.sh --coverage --benchmarks
-
-# Clean and rebuild CI containers
-ci-clean:
-    ./check-ci.sh --clean
-
-# Create a new crate in the workspace
-new-crate name:
-    cargo new --lib crates/{{name}}
-    echo '[package]\nname = "{{name}}"\nversion.workspace = true\nedition.workspace = true\nauthors.workspace = true\nlicense.workspace = true\nrepository.workspace = true\nhomepage.workspace = true\ndocumentation.workspace = true\nreadme = "README.md"\ndescription = "{{name}} crate for rs-sdrtrunk-transcriber"\n\n[dependencies]' > crates/{{name}}/Cargo.toml
-
-# Run continuous integration checks locally
+# Run CI checks locally (matches GitHub Actions)
 ci:
-    @echo "🔄 Running CI checks locally..."
-    just fmt-check
-    just lint-strict  
-    just test-all
-    just doctest
-    just docs-build
+    just fmt --check
+    just check
+    just lint
+    just lint "pedantic"
+    just test
+    just test-doc
+    just docs --no-open
     just audit
     just deny
-    just build-release
-    @echo "✅ CI checks complete!"
+    just unused-deps
+    just coverage
 
-# Development workflow helpers
+# Run quick development checks
 dev:
-    @echo "🔄 Running development checks..."
     just fmt
     just check
     just test
-    @echo "✅ Development checks complete!"
 
-# Watch for changes and run tests
-watch:
-    cargo watch -x "nextest run --workspace --all-features"
+# Run pre-commit checks
+pre-commit:
+    just fmt
+    just lint
+    just test
 
-# Watch for changes and run checks
-watch-check:
-    cargo watch -x "check --workspace --all-targets --all-features"
+# Database setup for local testing
+db-setup:
+    docker run -d --name sdrtrunk-test-db \
+        -e POSTGRES_USER=sdrtrunk_test \
+        -e POSTGRES_PASSWORD=test_password \
+        -e POSTGRES_DB=sdrtrunk_test \
+        -p 5433:5432 \
+        postgres:16-alpine || docker start sdrtrunk-test-db
 
-# Test specific crate
-test-crate crate:
-    cargo nextest run --package {{crate}} --all-features
+# Run database migrations
+db-migrate:
+    cd crates/sdrtrunk-database && \
+    sqlx migrate run --database-url "postgresql://sdrtrunk_test:test_password@localhost:5433/sdrtrunk_test"
 
-# Test with specific pattern
-test-pattern pattern:
-    cargo nextest run --workspace --all-features -E "test({{pattern}})"
+# Stop test database
+db-stop:
+    docker stop sdrtrunk-test-db || true
 
-# Run only integration tests
-test-integration:
-    cargo nextest run --workspace --all-features --test '*'
+# Clean up test database
+db-clean:
+    docker stop sdrtrunk-test-db || true
+    docker rm sdrtrunk-test-db || true
 
-# Run only unit tests
-test-unit:
-    cargo nextest run --workspace --all-features --lib
+# Run containerized CI environment
+ci-local:
+    ./check-ci.sh
 
-# Run property-based tests specifically
-test-property:
-    cargo nextest run --workspace --all-features --test property_tests
+# Run containerized CI with coverage
+ci-full:
+    ./check-ci.sh --coverage --benchmarks
 
-# Generate coverage with minimum percentage check
-coverage-check percentage="90":
-    @echo "📊 Checking test coverage (minimum {{percentage}}%)..."
-    cargo llvm-cov nextest --workspace --all-features --fail-under {{percentage}}
+# Update all tools and dependencies
+update:
+    rustup update
+    cargo update
+    just install-tools
 
-# Run mutation testing (requires cargo-mutants)
-test-mutation:
-    cargo mutants --workspace
+# Aliases for common commands
+alias f := fmt
+alias l := lint
+alias t := test
+alias c := check
+alias b := build
+alias d := docs
 
-# Performance testing
-test-performance:
-    @echo "⚡ Running performance tests..."
-    cargo nextest run --workspace --all-features -E "test(performance)"
+# Environment-specific clippy presets
+lint-pedantic:
+    @CLIPPY_FLAGS="-D warnings -W clippy::pedantic -A clippy::missing_errors_doc -A clippy::missing_panics_doc" just lint
 
-# Stress testing
-test-stress:
-    @echo "💪 Running stress tests..."
-    cargo nextest run --workspace --all-features -E "test(stress)"
-
-# Database integration tests (requires Docker)
-test-database:
-    @echo "🗄️  Running database integration tests..."
-    cargo nextest run --workspace --all-features --test integration_database
-
-# API integration tests (requires Docker)  
-test-api:
-    @echo "🌐 Running API integration tests..."
-    cargo nextest run --workspace --all-features --test integration_api
-
-# Monitor service tests (requires Docker)
-test-monitor:
-    @echo "👀 Running monitor service tests..."
-    cargo nextest run --workspace --all-features --test integration_monitor
-
-# Generate test report
-test-report:
-    @echo "📋 Generating comprehensive test report..."
-    just coverage-detailed
-    @echo "📈 Coverage report generated in target/llvm-cov/html/"
+lint-strict:
+    @CLIPPY_FLAGS="-D warnings -D clippy::all -D clippy::pedantic -D clippy::nursery -D clippy::cargo -A clippy::multiple_crate_versions" just lint

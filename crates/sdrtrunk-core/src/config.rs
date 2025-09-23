@@ -27,6 +27,10 @@ pub struct Config {
     /// Monitor configuration (optional)
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub monitor: Option<MonitorConfig>,
+
+    /// Transcription configuration (optional)
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub transcription: Option<TranscriptionConfig>,
 }
 
 /// Server configuration
@@ -247,6 +251,110 @@ const fn default_monitor_enabled() -> bool {
     false
 }
 
+/// Transcription configuration
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TranscriptionConfig {
+    /// Enable transcription service
+    #[serde(default = "default_transcription_enabled")]
+    pub enabled: bool,
+
+    /// Service backend ("whisperx", "mock")
+    #[serde(default = "default_transcription_service")]
+    pub service: String,
+
+    /// Model size ("tiny", "base", "small", "medium", "large-v2", "large-v3")
+    #[serde(default = "default_model_size")]
+    pub model_size: String,
+
+    /// Compute device ("cuda", "cpu", "mps")
+    #[serde(default = "default_device")]
+    pub device: String,
+
+    /// Batch size for processing
+    #[serde(default = "default_batch_size")]
+    pub batch_size: usize,
+
+    /// Number of worker threads
+    #[serde(default = "default_transcription_workers")]
+    pub workers: usize,
+
+    /// Processing timeout in seconds
+    #[serde(default = "default_transcription_timeout")]
+    pub timeout_seconds: u64,
+
+    /// Language code (None for auto-detect)
+    pub language: Option<String>,
+
+    /// Enable speaker diarization
+    #[serde(default = "default_diarization")]
+    pub diarization: bool,
+
+    /// Enable word-level timestamps
+    #[serde(default = "default_word_timestamps")]
+    pub word_timestamps: bool,
+
+    /// Python service path (for WhisperX)
+    pub python_path: Option<PathBuf>,
+
+    /// Service port (for HTTP-based services)
+    pub service_port: Option<u16>,
+}
+
+impl Default for TranscriptionConfig {
+    fn default() -> Self {
+        Self {
+            enabled: default_transcription_enabled(),
+            service: default_transcription_service(),
+            model_size: default_model_size(),
+            device: default_device(),
+            batch_size: default_batch_size(),
+            workers: default_transcription_workers(),
+            timeout_seconds: default_transcription_timeout(),
+            language: None,
+            diarization: default_diarization(),
+            word_timestamps: default_word_timestamps(),
+            python_path: None,
+            service_port: None,
+        }
+    }
+}
+
+const fn default_transcription_enabled() -> bool {
+    false
+}
+
+fn default_transcription_service() -> String {
+    "whisperx".to_string()
+}
+
+fn default_model_size() -> String {
+    "large-v3".to_string()
+}
+
+fn default_device() -> String {
+    "cpu".to_string()
+}
+
+const fn default_batch_size() -> usize {
+    16
+}
+
+const fn default_transcription_workers() -> usize {
+    2
+}
+
+const fn default_transcription_timeout() -> u64 {
+    300
+}
+
+const fn default_diarization() -> bool {
+    true
+}
+
+const fn default_word_timestamps() -> bool {
+    true
+}
+
 // Default implementation now derived
 
 impl Config {
@@ -321,6 +429,7 @@ impl Default for Config {
                 file: None,
             },
             monitor: None,
+            transcription: None,
         }
     }
 }

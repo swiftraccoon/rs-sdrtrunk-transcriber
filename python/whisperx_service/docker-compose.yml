@@ -1,0 +1,78 @@
+version: '3.8'
+
+services:
+  # CPU-only container (RECOMMENDED for containerized deployment)
+  whisperx:
+    build: .
+    container_name: whisperx-service
+    ports:
+      - "8001:8001"
+    volumes:
+      # Mount audio files directory
+      - /tmp/sdrtrunk/uploads:/data/audio:ro
+      # Model cache persistence
+      - whisperx-cache:/home/whisperx/.cache/whisperx
+    environment:
+      # Model configuration (CPU-optimized)
+      - WHISPERX_MODEL_SIZE=base  # Use smaller model for CPU
+      - WHISPERX_DEVICE=cpu
+      - WHISPERX_COMPUTE_TYPE=float32
+      - WHISPERX_BATCH_SIZE=4  # Smaller batch for CPU
+
+      # Service configuration
+      - WHISPERX_WORKERS=1
+      - WHISPERX_LOG_LEVEL=INFO
+
+      # Optional: Hugging Face token for pyannote models
+      # - WHISPERX_HF_TOKEN=your_token_here
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8001/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+    deploy:
+      resources:
+        limits:
+          memory: 4G  # Lower memory for smaller model
+          cpus: '4'   # Limit CPU usage
+        reservations:
+          memory: 2G
+
+  # WARNING: GPU container NOT RECOMMENDED
+  # Running WhisperX in a container with GPU will:
+  # - Monopolize GPU memory (6-10GB for large models)
+  # - Prevent host applications from using GPU
+  # - Require complex nvidia-docker setup
+  # - May have driver compatibility issues
+  #
+  # For GPU acceleration, run the Python service natively instead:
+  # cd python/whisperx_service
+  # python3 -m venv venv
+  # source venv/bin/activate
+  # pip install -r requirements.txt
+  # WHISPERX_DEVICE=cuda python service.py
+  #
+  # whisperx-gpu:
+  #   extends: whisperx
+  #   profiles: ["gpu"]  # Only start with: docker-compose --profile gpu up
+  #   runtime: nvidia
+  #   environment:
+  #     - WHISPERX_MODEL_SIZE=large-v3
+  #     - WHISPERX_DEVICE=cuda
+  #     - WHISPERX_COMPUTE_TYPE=float16
+  #     - NVIDIA_VISIBLE_DEVICES=0
+  #   deploy:
+  #     resources:
+  #       limits:
+  #         memory: 12G
+  #       reservations:
+  #         devices:
+  #           - driver: nvidia
+  #             count: 1
+  #             capabilities: [gpu]
+
+volumes:
+  whisperx-cache:
+    driver: local

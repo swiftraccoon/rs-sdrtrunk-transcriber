@@ -21,8 +21,66 @@ use std::sync::Arc;
 /// # Errors
 ///
 /// Returns an error if the application state validation fails.
-pub fn build_router(config: Config, pool: PgPool) -> Result<Router> {
-    let state = Arc::new(AppState::new(config, pool)?);
+pub async fn build_router(config: Config, pool: PgPool) -> Result<Router> {
+    let mut app_state = AppState::new(config.clone(), pool.clone())?;
+
+    // Initialize transcription service if enabled
+    if let Some(ref transcription_config) = config.transcription {
+        if transcription_config.enabled {
+            // Convert from core config to transcriber config
+            let transcriber_config = sdrtrunk_transcriber::types::TranscriptionConfig {
+                enabled: transcription_config.enabled,
+                service: transcription_config.service.clone(),
+                model_size: transcription_config.model_size.clone(),
+                device: transcription_config.device.clone(),
+                batch_size: transcription_config.batch_size,
+                compute_type: "int8".to_string(), // Default
+                language: transcription_config.language.clone(),
+                min_speakers: if transcription_config.diarization { Some(1) } else { None },
+                max_speakers: if transcription_config.diarization { Some(10) } else { None },
+                workers: transcription_config.workers,
+                python_path: transcription_config.python_path.clone(),
+                service_port: transcription_config.service_port,
+                timeout_seconds: transcription_config.timeout_seconds,
+                max_retries: 3, // Default
+                queue_size: 100, // Default
+                enable_vad: true, // Default
+                word_timestamps: transcription_config.word_timestamps,
+                confidence_threshold: 0.6, // Default
+            };
+
+            // Initialize the appropriate transcription service
+            let mut service_instance = if transcription_config.service == "whisperx" {
+                Box::new(sdrtrunk_transcriber::WhisperXService::new(transcriber_config.clone()))
+                    as Box<dyn sdrtrunk_transcriber::TranscriptionService>
+            } else {
+                // Use mock service for testing or when whisperx is not available
+                Box::new(sdrtrunk_transcriber::MockTranscriptionService::new())
+                    as Box<dyn sdrtrunk_transcriber::TranscriptionService>
+            };
+
+            // Initialize the service
+            service_instance.initialize(&transcriber_config).await
+                .expect("Failed to initialize transcription service");
+
+            let service: Arc<dyn sdrtrunk_transcriber::TranscriptionService> = Arc::from(service_instance);
+
+            // Create worker pool
+            let mut worker_pool = sdrtrunk_transcriber::TranscriptionWorkerPool::new(
+                transcriber_config,
+                service,
+            );
+
+            // Start the workers
+            worker_pool.start().await
+                .expect("Failed to start transcription worker pool");
+
+            // Set the pool in app state
+            app_state.set_transcription_pool(Arc::new(worker_pool));
+        }
+    }
+
+    let state = Arc::new(app_state);
 
     // Validate the application state
     state.validate()?;
@@ -40,7 +98,7 @@ pub fn build_router(config: Config, pool: PgPool) -> Result<Router> {
 /// Returns an error if the application state creation fails.
 #[cfg(test)]
 #[allow(clippy::missing_panics_doc)]
-pub fn build_test_router(config: Config, pool: PgPool) -> Result<Router> {
+pub async fn build_test_router(config: Config, pool: PgPool) -> Result<Router> {
     let state = Arc::new(AppState::new(config, pool)?);
 
     // Build a simplified router for testing

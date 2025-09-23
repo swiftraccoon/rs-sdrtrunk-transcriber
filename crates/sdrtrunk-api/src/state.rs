@@ -2,7 +2,9 @@
 
 use sdrtrunk_core::{Config, context_error, context_error::Result};
 use sdrtrunk_database::PgPool;
+use sdrtrunk_transcriber::TranscriptionWorkerPool;
 use std::path::PathBuf;
+use std::sync::Arc;
 
 /// Shared application state
 #[derive(Clone)]
@@ -13,6 +15,8 @@ pub struct AppState {
     pub pool: PgPool,
     /// Base directory for uploaded files
     pub upload_dir: PathBuf,
+    /// Transcription worker pool
+    pub transcription_pool: Option<Arc<TranscriptionWorkerPool>>,
 }
 
 impl AppState {
@@ -32,7 +36,13 @@ impl AppState {
             config,
             pool,
             upload_dir,
+            transcription_pool: None,
         })
+    }
+
+    /// Set the transcription worker pool
+    pub fn set_transcription_pool(&mut self, pool: Arc<TranscriptionWorkerPool>) {
+        self.transcription_pool = Some(pool);
     }
 
     /// Get file storage path for a given system and date

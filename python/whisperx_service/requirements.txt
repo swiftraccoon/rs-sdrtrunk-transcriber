@@ -1,0 +1,22 @@
+# WhisperX and dependencies
+whisperx>=3.1.1
+torch>=2.0.0
+torchaudio>=2.0.0
+
+# FastAPI server
+fastapi>=0.104.0
+uvicorn[standard]>=0.24.0
+pydantic>=2.4.0
+pydantic-settings>=2.0.0
+python-multipart>=0.0.6
+
+# Audio processing
+ffmpeg-python>=0.2.0
+soundfile>=0.12.1
+librosa>=0.10.0
+
+# Utilities
+python-json-logger>=2.0.7
+aiofiles>=23.2.1
+httpx>=0.25.0
+tenacity>=8.2.3

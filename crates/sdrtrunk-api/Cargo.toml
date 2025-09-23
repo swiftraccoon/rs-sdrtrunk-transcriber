@@ -19,6 +19,7 @@ path = "src/main.rs"
 # Internal dependencies
 sdrtrunk-core = { path = "../sdrtrunk-core" }
 sdrtrunk-database = { path = "../sdrtrunk-database" }
+sdrtrunk-transcriber = { path = "../sdrtrunk-transcriber" }
 
 # Web framework
 axum = { version = "0.7", features = ["macros", "multipart", "ws"] }

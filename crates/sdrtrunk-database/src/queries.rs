@@ -855,6 +855,33 @@ pub async fn insert_upload_log(pool: &PgPool, params: UploadLogParams) -> Result
     UploadLogQueries::insert(pool, &log).await
 }
 
+/// Update transcription status for a radio call
+///
+/// # Errors
+///
+/// Returns an error if the database query fails.
+pub async fn update_transcription_status(
+    pool: &PgPool,
+    call_id: Uuid,
+    status: &str,
+) -> Result<()> {
+    let query = r"
+        UPDATE radio_calls
+        SET transcription_status = $2,
+            updated_at = NOW()
+        WHERE id = $1
+    ";
+
+    sqlx::query(query)
+        .bind(call_id)
+        .bind(status)
+        .execute(pool)
+        .await
+        .map_err(|e| Error::Database(e.to_string()))?;
+
+    Ok(())
+}
+
 #[cfg(test)]
 #[allow(clippy::missing_panics_doc)]
 mod tests {

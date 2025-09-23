@@ -4,6 +4,7 @@ members = [
     "crates/sdrtrunk-database",
     "crates/sdrtrunk-api",
     "crates/sdrtrunk-monitor",
+    "crates/sdrtrunk-transcriber",
 ]
 resolver = "2"
 default-members = ["crates/sdrtrunk-api"]
@@ -38,10 +39,13 @@ bincode = "1.3"
 csv = "1.3"
 
 # Error handling and logging
+anyhow = "1.0"
+thiserror = "2.0"
 tracing = { version = "0.1", features = ["max_level_trace", "release_max_level_info"] }
 tracing-subscriber = { version = "0.3", features = ["env-filter", "json", "registry", "fmt"] }
 tracing-appender = "0.2"
 tracing-opentelemetry = "0.26"
+metrics = "0.23"
 
 # CLI and configuration
 clap = { version = "4.5", features = ["derive", "env", "wrap_help", "string"] }
@@ -105,9 +109,11 @@ zstd = "0.13"
 # Development and testing dependencies
 criterion = { version = "0.5", features = ["html_reports", "async_tokio"] }
 proptest = "1.5"
+pretty_assertions = "1.4"
 quickcheck = "1.0"
 tempfile = "3.13"
 similar-asserts = "1.6"
+wiremock = "0.6"
 
 # System integration
 nix = { version = "0.29", features = ["signal", "process", "fs"] }
@@ -126,7 +132,6 @@ testcontainers = "0.23"
 testcontainers-modules = { version = "0.11", features = ["postgres"] }
 mockall = "0.13"
 rstest = "0.23"
-wiremock = "0.6"
 tarpaulin = "0.31"
 
 [workspace.metadata.docs.rs]

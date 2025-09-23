@@ -1,0 +1,27 @@
+[Unit]
+Description=WhisperX Transcription Service
+After=network.target
+
+[Service]
+Type=simple
+User=sdrtrunk
+Group=sdrtrunk
+WorkingDirectory=/opt/whisperx_service
+Environment="PATH=/opt/whisperx_service/venv/bin"
+Environment="WHISPERX_MODEL_SIZE=large-v3"
+Environment="WHISPERX_DEVICE=cuda"
+Environment="WHISPERX_COMPUTE_TYPE=float16"
+Environment="WHISPERX_PORT=8001"
+Environment="WHISPERX_LOG_LEVEL=INFO"
+ExecStart=/opt/whisperx_service/venv/bin/python service.py
+Restart=always
+RestartSec=10
+
+# Resource limits
+# Adjust based on your system
+LimitNOFILE=65536
+# Memory limit (optional, remove if using GPU)
+# MemoryMax=8G
+
+[Install]
+WantedBy=multi-user.target

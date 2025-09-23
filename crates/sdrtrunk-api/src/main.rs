@@ -45,7 +45,7 @@ pub fn print_startup_banner(config: &Config) {
     );
     info!("╚══════════════════════════════════════════════════════════╝");
     info!(
-        "🚀 Starting server on {}:{}",
+        "Starting server on {}:{}",
         config.server.host, config.server.port
     );
 }
@@ -57,22 +57,22 @@ pub fn print_startup_banner(config: &Config) {
 /// Returns error if database connection, migration, or health check fails
 pub async fn initialize_database(config: &Config) -> Result<Database> {
     // Initialize database connection
-    info!("🔌 Connecting to database...");
+    info!("Connecting to database...");
     let database = Database::new(config).await.map_err(|e| {
         error!("Failed to connect to database: {}", e);
         context_error!("Database connection failed: {}", e)
     })?;
 
-    info!("✅ Database connection established");
+    info!("Database connection established");
 
     // Run database migrations
-    info!("🔄 Running database migrations...");
+    info!("Running database migrations...");
     database.migrate().await.map_err(|e| {
         error!("Database migration failed: {}", e);
         context_error!("Migration failed: {}", e)
     })?;
 
-    info!("✅ Database migrations completed");
+    info!("Database migrations completed");
 
     // Perform database health check
     database.health_check().await.map_err(|e| {
@@ -80,7 +80,7 @@ pub async fn initialize_database(config: &Config) -> Result<Database> {
         context_error!("Database health check failed: {}", e)
     })?;
 
-    info!("✅ Database health check passed");
+    info!("Database health check passed");
     Ok(database)
 }
 
@@ -101,8 +101,8 @@ pub fn print_ready_banner(addr: SocketAddr) {
     info!("║                     SERVER READY                         ║");
     info!("╟──────────────────────────────────────────────────────────╢");
     info!("║ 🌐 API:     http://{:12}", addr);
-    info!("║ 💚 Health:  http://{:12}/health", addr);
-    info!("║ 📚 Docs:    http://{:12}/api/docs", addr);
+    info!("║ Health:  http://{:12}/health", addr);
+    info!("║ Docs:    http://{:12}/api/docs", addr);
     info!("╚══════════════════════════════════════════════════════════╝\n");
 }
 
@@ -114,8 +114,8 @@ async fn main() -> Result<()> {
     let database = initialize_database(&config).await?;
 
     // Build the application router
-    info!("🛠️  Building application routes...");
-    let app = build_router(config.clone(), database.pool().clone())?
+    info!("Building application routes...");
+    let app = build_router(config.clone(), database.pool().clone()).await?
         .layer(ServiceBuilder::new().layer(TraceLayer::new_for_http()));
 
     let addr = create_server_address(&config)?;
@@ -136,7 +136,7 @@ async fn main() -> Result<()> {
     .await
     .map_err(|e| context_error!("Server error: {}", e))?;
 
-    info!("👋 Server shutdown complete");
+    info!("Server shutdown complete");
     Ok(())
 }
 

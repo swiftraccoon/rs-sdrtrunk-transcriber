@@ -280,7 +280,7 @@ pub async fn handle_call_upload(
     // Handle test requests first - they don't require audio files
     if metadata.test.is_some() {
         info!(
-            "🧪 TEST REQUEST: System {} | IP: {}",
+            "TEST REQUEST: System {} | IP: {}",
             metadata.system_id.as_deref().unwrap_or("Unknown"),
             client_ip
         );
@@ -550,6 +550,42 @@ pub async fn handle_call_upload(
         }
     };
 
+    // Trigger transcription if enabled
+    if let Some(ref transcription_config) = state.config.transcription {
+        if transcription_config.enabled {
+            if let Some(ref transcription_pool) = state.transcription_pool {
+                let transcription_request = sdrtrunk_transcriber::TranscriptionRequest::new(
+                    call_id,
+                    std::path::PathBuf::from(&file_path),
+                );
+
+                // Submit to transcription service (fire and forget)
+                let pool_clone = transcription_pool.clone();
+                let db_pool = state.pool.clone();
+                tokio::spawn(async move {
+                    match pool_clone.submit(transcription_request).await {
+                        Ok(()) => {
+                            info!("Transcription request submitted for call {}", call_id);
+                        }
+                        Err(e) => {
+                            error!("Failed to submit transcription for call {}: {}", call_id, e);
+                            // Update database to mark transcription as failed
+                            if let Err(db_err) = sdrtrunk_database::update_transcription_status(
+                                &db_pool,
+                                call_id,
+                                "failed",
+                            ).await {
+                                error!("Failed to update transcription status: {}", db_err);
+                            }
+                        }
+                    }
+                });
+            } else {
+                warn!("Transcription enabled but no worker pool initialized");
+            }
+        }
+    }
+
     // Update system statistics (non-critical, log errors but don't fail)
     if let Err(e) =
         sdrtrunk_database::update_system_stats(&state.pool, &system_id, metadata.system_label).await
@@ -595,7 +631,7 @@ pub async fn handle_call_upload(
     let file_size_kb = audio.len() as f64 / 1024.0;
 
     info!(
-        "📻 UPLOAD: {} | {} | {} | {} | {:.1}KB | {} | {}",
+        "UPLOAD: {} | {} | {} | {} | {:.1}KB | {} | {}",
         system_id,
         talkgroup_info,
         freq_mhz,
