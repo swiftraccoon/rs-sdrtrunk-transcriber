@@ -72,6 +72,9 @@ pub enum Error {
     /// Serialization error
     Serialization(serde_json::Error),
 
+    /// Transcription error
+    Transcription(String),
+
     /// Other error
     Other(String),
 }
@@ -103,6 +106,7 @@ impl fmt::Display for Error {
             }
             Self::NotFound { resource } => write!(f, "Resource not found: {resource}"),
             Self::Serialization(err) => write!(f, "Serialization error: {err}"),
+            Self::Transcription(msg) => write!(f, "Transcription error: {msg}"),
             Self::Other(msg) => write!(f, "{msg}"),
         }
     }

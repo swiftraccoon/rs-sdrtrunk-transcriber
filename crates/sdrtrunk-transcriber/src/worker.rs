@@ -4,6 +4,7 @@ use crate::error::{TranscriptionError, TranscriptionResult};
 use crate::service::TranscriptionService;
 use crate::types::{TranscriptionRequest, TranscriptionResponse};
 use sdrtrunk_core::{TranscriptionConfig, TranscriptionStatus};
+use sdrtrunk_core::context_error::Result as CoreResult;
 use async_channel::{Receiver, Sender};
 use sdrtrunk_database::{queries, queries::TranscriptionUpdate};
 use sqlx::PgPool;
@@ -62,11 +63,12 @@ impl TranscriptionWorkerPool {
     }
 
     /// Start the worker pool
-    pub async fn start(&mut self) -> TranscriptionResult<()> {
+    pub async fn start(&mut self) -> CoreResult<()> {
         info!("Starting transcription worker pool with {} workers", self.config.workers);
 
         for i in 0..self.config.workers {
-            let worker = self.spawn_worker(i).await?;
+            let worker = self.spawn_worker(i).await
+                .map_err(|e| sdrtrunk_core::context_error::ContextError::from(e))?;
             self.workers.push(worker);
         }
 
@@ -153,19 +155,21 @@ impl TranscriptionWorkerPool {
     }
 
     /// Submit a transcription request
-    pub async fn submit(&self, request: TranscriptionRequest) -> TranscriptionResult<()> {
+    pub async fn submit(&self, request: TranscriptionRequest) -> CoreResult<()> {
         self.sender
             .send(request)
             .await
             .map_err(|_| TranscriptionError::queue_full(self.config.queue_size))
+            .map_err(|e| sdrtrunk_core::context_error::ContextError::from(e))
     }
 
     /// Try to submit a transcription request without blocking
     /// Returns Ok(()) if submitted successfully, Err if queue is full
-    pub fn try_submit(&self, request: TranscriptionRequest) -> TranscriptionResult<()> {
+    pub fn try_submit(&self, request: TranscriptionRequest) -> CoreResult<()> {
         self.sender
             .try_send(request)
             .map_err(|_| TranscriptionError::queue_full(self.config.queue_size))
+            .map_err(|e| sdrtrunk_core::context_error::ContextError::from(e))
     }
 
     /// Get the current queue length for monitoring
@@ -179,15 +183,16 @@ impl TranscriptionWorkerPool {
     }
 
     /// Get the next completed transcription
-    pub async fn get_response(&self) -> TranscriptionResult<TranscriptionResponse> {
+    pub async fn get_response(&self) -> CoreResult<TranscriptionResponse> {
         self.response_receiver
             .recv()
             .await
             .map_err(|_| TranscriptionError::worker_pool("Response channel closed"))
+            .map_err(|e| sdrtrunk_core::context_error::ContextError::from(e))
     }
 
     /// Shutdown the worker pool
-    pub async fn shutdown(mut self) -> TranscriptionResult<()> {
+    pub async fn shutdown(mut self) -> CoreResult<()> {
         info!("Shutting down transcription worker pool");
 
         // Close the sender to signal workers to stop

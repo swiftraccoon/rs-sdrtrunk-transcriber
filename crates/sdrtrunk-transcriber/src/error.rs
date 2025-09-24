@@ -310,3 +310,16 @@ mod tests {
         assert!(display.contains("60 seconds"));
     }
 }
+
+// Conversions to core error types
+impl From<TranscriptionError> for sdrtrunk_core::context_error::ContextError {
+    fn from(err: TranscriptionError) -> Self {
+        Self::with_context(err, "Transcription service error")
+    }
+}
+
+impl From<TranscriptionError> for sdrtrunk_core::Error {
+    fn from(err: TranscriptionError) -> Self {
+        Self::Transcription(err.to_string())
+    }
+}
