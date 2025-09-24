@@ -564,18 +564,18 @@ mod tests {
         assert_eq!(default_upload_dir(), "uploads");
         assert_eq!(default_max_file_size(), 100_000_000);
         assert_eq!(default_allowed_extensions(), vec!["mp3", "wav", "flac"]);
-        assert_eq!(default_organize_by_date(), true);
-        assert_eq!(default_enable_auth(), true);
+        assert!(default_organize_by_date());
+        assert!(default_enable_auth());
         assert_eq!(default_rate_limit(), 60);
-        assert_eq!(default_enable_cors(), true);
+        assert!(default_enable_cors());
         assert_eq!(default_cors_origins(), vec!["*"]);
-        assert_eq!(default_require_api_key(), false);
-        assert_eq!(default_enable_ip_restrictions(), false);
+        assert!(!default_require_api_key());
+        assert!(!default_enable_ip_restrictions());
         assert_eq!(default_max_upload_size(), 100_000_000);
         assert_eq!(default_request_timeout(), 30);
         assert_eq!(default_log_level(), "info");
         assert_eq!(default_log_format(), "json");
-        assert_eq!(default_monitor_enabled(), false);
+        assert!(!default_monitor_enabled());
     }
 
     #[test]

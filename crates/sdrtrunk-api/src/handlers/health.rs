@@ -640,9 +640,8 @@ mod tests {
         // Test that get_uptime_seconds returns a reasonable value
         let uptime = get_uptime_seconds();
 
-        // Uptime is i64, check it's within reasonable bounds
-        // Should be non-negative (could be 0 at startup)
-        assert!(uptime >= 0, "Uptime should be non-negative");
+        // Uptime is u64, so it's always non-negative
+        // Just check it's within reasonable bounds (could be 0 at startup)
         // Assume test system hasn't been running for more than 10 years
         assert!(uptime < 365 * 24 * 3600 * 10, "Uptime unreasonably high");
     }
