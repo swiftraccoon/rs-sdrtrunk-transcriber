@@ -109,7 +109,8 @@ async fn main() -> Result<()> {
 
     // Build the application router
     info!("Building application routes...");
-    let app = build_router(config.clone(), database.pool().clone()).await?
+    let app = build_router(config.clone(), database.pool().clone())
+        .await?
         .layer(ServiceBuilder::new().layer(TraceLayer::new_for_http()));
 
     let addr = create_server_address(&config)?;

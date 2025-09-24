@@ -48,11 +48,7 @@ impl TranscriptionRequest {
     }
 
     /// Create with custom options
-    pub fn with_options(
-        call_id: Uuid,
-        audio_path: PathBuf,
-        options: TranscriptionOptions,
-    ) -> Self {
+    pub fn with_options(call_id: Uuid, audio_path: PathBuf, options: TranscriptionOptions) -> Self {
         Self {
             id: Uuid::new_v4(),
             call_id,

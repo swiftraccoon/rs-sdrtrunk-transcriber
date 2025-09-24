@@ -162,7 +162,7 @@ const fn default_port() -> u16 {
 
 fn default_workers() -> usize {
     std::thread::available_parallelism()
-        .map(|n| n.get())
+        .map(std::num::NonZero::get)
         .unwrap_or(4)
 }
 

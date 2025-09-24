@@ -27,11 +27,11 @@ pub async fn build_router(config: Config, pool: PgPool) -> Result<Router> {
     // Initialize transcription service if enabled
     if let Some(ref transcription_config) = config.transcription {
         if transcription_config.enabled {
-
             // Initialize the appropriate transcription service
             let mut service_instance = if transcription_config.service == "whisperx" {
-                Box::new(sdrtrunk_transcriber::WhisperXService::new(transcription_config.clone()))
-                    as Box<dyn sdrtrunk_transcriber::TranscriptionService>
+                Box::new(sdrtrunk_transcriber::WhisperXService::new(
+                    transcription_config.clone(),
+                )) as Box<dyn sdrtrunk_transcriber::TranscriptionService>
             } else {
                 // Use mock service for testing or when whisperx is not available
                 Box::new(sdrtrunk_transcriber::MockTranscriptionService::new())
@@ -39,10 +39,13 @@ pub async fn build_router(config: Config, pool: PgPool) -> Result<Router> {
             };
 
             // Initialize the service
-            service_instance.initialize(transcription_config).await
+            service_instance
+                .initialize(transcription_config)
+                .await
                 .expect("Failed to initialize transcription service");
 
-            let service: Arc<dyn sdrtrunk_transcriber::TranscriptionService> = Arc::from(service_instance);
+            let service: Arc<dyn sdrtrunk_transcriber::TranscriptionService> =
+                Arc::from(service_instance);
 
             // Create worker pool
             let mut worker_pool = sdrtrunk_transcriber::TranscriptionWorkerPool::new(
@@ -52,7 +55,9 @@ pub async fn build_router(config: Config, pool: PgPool) -> Result<Router> {
             );
 
             // Start the workers
-            worker_pool.start().await
+            worker_pool
+                .start()
+                .await
                 .expect("Failed to start transcription worker pool");
 
             let worker_pool_arc = Arc::new(worker_pool);
@@ -72,15 +77,30 @@ pub async fn build_router(config: Config, pool: PgPool) -> Result<Router> {
                     };
 
                     if queue_len > 0 {
-                        tracing::info!("Transcription queue status: {}/{} ({:.1}% full)", queue_len, queue_capacity, utilization);
+                        tracing::info!(
+                            "Transcription queue status: {}/{} ({:.1}% full)",
+                            queue_len,
+                            queue_capacity,
+                            utilization
+                        );
                     }
 
                     // Alert if queue is getting full
                     if utilization >= 80.0 {
-                        tracing::warn!("Transcription queue is {:.1}% full ({}/{})", utilization, queue_len, queue_capacity);
+                        tracing::warn!(
+                            "Transcription queue is {:.1}% full ({}/{})",
+                            utilization,
+                            queue_len,
+                            queue_capacity
+                        );
                     }
                     if utilization >= 95.0 {
-                        tracing::error!("Transcription queue is critically full: {:.1}% ({}/{})", utilization, queue_len, queue_capacity);
+                        tracing::error!(
+                            "Transcription queue is critically full: {:.1}% ({}/{})",
+                            utilization,
+                            queue_len,
+                            queue_capacity
+                        );
                     }
                 }
             });

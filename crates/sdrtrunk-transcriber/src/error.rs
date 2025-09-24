@@ -265,10 +265,8 @@ mod tests {
         let err = TranscriptionError::file_not_found("/test/path.mp3");
         assert!(matches!(err, TranscriptionError::FileNotFound { .. }));
 
-        let err = TranscriptionError::invalid_format(
-            "aac",
-            vec!["mp3".to_string(), "wav".to_string()],
-        );
+        let err =
+            TranscriptionError::invalid_format("aac", vec!["mp3".to_string(), "wav".to_string()]);
         assert!(matches!(err, TranscriptionError::InvalidAudioFormat { .. }));
 
         let err = TranscriptionError::timeout(30);

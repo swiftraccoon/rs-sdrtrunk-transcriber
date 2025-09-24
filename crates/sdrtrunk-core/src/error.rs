@@ -432,10 +432,7 @@ mod tests {
     #[test]
     fn test_all_error_display_variants() {
         let test_cases = vec![
-            (
-                Error::Io(io::Error::other("test")),
-                "I/O error:",
-            ),
+            (Error::Io(io::Error::other("test")), "I/O error:"),
             (
                 Error::Configuration {
                     message: "config error".to_string(),

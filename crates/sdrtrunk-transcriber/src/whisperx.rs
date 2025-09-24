@@ -1,9 +1,7 @@
 //! WhisperX transcription service implementation
 
 use crate::error::{TranscriptionError, TranscriptionResult};
-use crate::service::{
-    AudioValidation, ServiceCapabilities, ServiceHealth, TranscriptionService,
-};
+use crate::service::{AudioValidation, ServiceCapabilities, ServiceHealth, TranscriptionService};
 use crate::types::{
     SpeakerSegment, TranscriptionConfig, TranscriptionRequest, TranscriptionResponse,
     TranscriptionSegment, TranscriptionStats, TranscriptionStatus, WordSegment,
@@ -17,7 +15,7 @@ use std::process::Stdio;
 use std::sync::Arc;
 use tokio::process::{Child, Command};
 use tokio::sync::RwLock;
-use tokio::time::{sleep, Duration};
+use tokio::time::{Duration, sleep};
 use tracing::{error, info};
 use uuid::Uuid;
 
@@ -120,15 +118,16 @@ pub struct WhisperXService {
 impl WhisperXService {
     /// Create a new WhisperX service
     pub fn new(config: TranscriptionConfig) -> Self {
-        let service_port = config.service_port
+        let service_port = config
+            .service_port
             .expect("service_port must be configured in transcription config");
         let service_url = format!("http://localhost:{}", service_port);
 
         let client = reqwest::Client::builder()
-            .timeout(Duration::from_secs(30))  // Total request timeout
-            .connect_timeout(Duration::from_secs(5))  // Connection timeout
-            .pool_idle_timeout(Duration::from_secs(90))  // Keep connections alive for 90 seconds
-            .pool_max_idle_per_host(10)  // Keep up to 10 idle connections
+            .timeout(Duration::from_secs(30)) // Total request timeout
+            .connect_timeout(Duration::from_secs(5)) // Connection timeout
+            .pool_idle_timeout(Duration::from_secs(90)) // Keep connections alive for 90 seconds
+            .pool_max_idle_per_host(10) // Keep up to 10 idle connections
             .build()
             .unwrap();
 
@@ -164,14 +163,19 @@ impl WhisperXService {
             .arg("--host")
             .arg("0.0.0.0")
             .arg("--port")
-            .arg(self.config.service_port
-                .expect("service_port must be configured")
-                .to_string())
+            .arg(
+                self.config
+                    .service_port
+                    .expect("service_port must be configured")
+                    .to_string(),
+            )
             .current_dir(&python_path)
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
             .spawn()
-            .map_err(|e| TranscriptionError::subprocess(format!("Failed to start Python service: {}", e)))?;
+            .map_err(|e| {
+                TranscriptionError::subprocess(format!("Failed to start Python service: {}", e))
+            })?;
 
         // Store process handle
         let mut process = self.python_process.write().await;
@@ -189,7 +193,12 @@ impl WhisperXService {
         let max_attempts = 30;
 
         while attempts < max_attempts {
-            match self.client.get(&format!("{}/health", self.service_url)).send().await {
+            match self
+                .client
+                .get(&format!("{}/health", self.service_url))
+                .send()
+                .await
+            {
                 Ok(response) => {
                     if response.status().is_success() {
                         info!("Python WhisperX service is ready");
@@ -211,7 +220,11 @@ impl WhisperXService {
     }
 
     /// Convert Python response to Rust response
-    fn convert_response(&self, py_response: PythonResponse, request_id: Uuid) -> TranscriptionResponse {
+    fn convert_response(
+        &self,
+        py_response: PythonResponse,
+        request_id: Uuid,
+    ) -> TranscriptionResponse {
         let segments: Vec<TranscriptionSegment> = py_response
             .segments
             .into_iter()

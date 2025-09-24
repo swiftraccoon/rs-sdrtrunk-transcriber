@@ -7,6 +7,7 @@ authors = ["SDRTrunk Transcriber Contributors"]
 description = "Transcription service for SDRTrunk audio files with speaker diarization"
 license = "GPL-3.0"
 repository = "https://github.com/swiftraccoon/rs-sdrtrunk-transcriber"
+readme = "../../README.md"
 keywords = ["transcription", "whisper", "diarization", "sdr", "audio"]
 categories = ["multimedia::audio", "api-bindings"]
 

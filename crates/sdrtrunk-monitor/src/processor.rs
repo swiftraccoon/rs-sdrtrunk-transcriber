@@ -1584,10 +1584,7 @@ mod tests {
             let path = PathBuf::from(full_path);
             let filename = path.file_name().and_then(|n| n.to_str()).unwrap_or("");
 
-            assert_eq!(
-                filename, expected_filename,
-                "Failed for path: {full_path}"
-            );
+            assert_eq!(filename, expected_filename, "Failed for path: {full_path}");
         }
     }
 

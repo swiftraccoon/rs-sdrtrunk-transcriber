@@ -870,11 +870,7 @@ pub async fn insert_upload_log(pool: &PgPool, params: UploadLogParams) -> Result
 /// # Errors
 ///
 /// Returns an error if the database query fails.
-pub async fn update_transcription_status(
-    pool: &PgPool,
-    call_id: Uuid,
-    status: &str,
-) -> Result<()> {
+pub async fn update_transcription_status(pool: &PgPool, call_id: Uuid, status: &str) -> Result<()> {
     let query = r"
         UPDATE radio_calls
         SET transcription_status = $2,
@@ -1076,8 +1072,8 @@ mod tests {
                 text: None,
                 confidence: None,
                 error: None,
-                    speaker_segments: None,
-                    speaker_count: None,
+                speaker_segments: None,
+                speaker_count: None,
             },
         )
         .await?;
@@ -1094,8 +1090,8 @@ mod tests {
                 text: Some("Test transcription"),
                 confidence: Some(0.95),
                 error: None,
-                    speaker_segments: None,
-                    speaker_count: None,
+                speaker_segments: None,
+                speaker_count: None,
             },
         )
         .await?;
@@ -1304,8 +1300,8 @@ mod tests {
                 text: None,
                 confidence: None,
                 error: Some("Transcription service unavailable"),
-                    speaker_segments: None,
-                    speaker_count: None,
+                speaker_segments: None,
+                speaker_count: None,
             },
         )
         .await?;
@@ -1365,8 +1361,8 @@ mod tests {
             text: Some("Partial transcription"),
             confidence: Some(0.75),
             error: None,
-                    speaker_segments: None,
-                    speaker_count: None,
+            speaker_segments: None,
+            speaker_count: None,
         };
 
         assert_eq!(update.status, "processing");
@@ -1661,8 +1657,8 @@ mod tests {
             text: None,
             confidence: None,
             error: None,
-                    speaker_segments: None,
-                    speaker_count: None,
+            speaker_segments: None,
+            speaker_count: None,
         };
         RadioCallQueries::update_transcription_status(&pool, update).await?;
 
@@ -1673,8 +1669,8 @@ mod tests {
             text: Some("Updated transcription text"),
             confidence: Some(0.95),
             error: None,
-                    speaker_segments: None,
-                    speaker_count: None,
+            speaker_segments: None,
+            speaker_count: None,
         };
         RadioCallQueries::update_transcription_status(&pool, update).await?;
 
@@ -1685,8 +1681,8 @@ mod tests {
             text: None,
             confidence: None,
             error: Some("Test error message"),
-                    speaker_segments: None,
-                    speaker_count: None,
+            speaker_segments: None,
+            speaker_count: None,
         };
         RadioCallQueries::update_transcription_status(&pool, update).await?;
 
@@ -2239,8 +2235,8 @@ mod tests {
             text: Some("Test transcription text"),
             confidence: Some(0.85),
             error: None,
-                    speaker_segments: None,
-                    speaker_count: None,
+            speaker_segments: None,
+            speaker_count: None,
         };
         assert_eq!(update.status, "completed");
         assert!(update.confidence.unwrap() > 0.8);
@@ -2366,8 +2362,8 @@ mod tests {
             text: Some("Debug text"),
             confidence: Some(0.88),
             error: Some("Debug error"),
-                    speaker_segments: None,
-                    speaker_count: None,
+            speaker_segments: None,
+            speaker_count: None,
         };
 
         let debug_str = format!("{update:?}");
@@ -2558,8 +2554,8 @@ mod tests {
             text: None,
             confidence: None,
             error: None,
-                    speaker_segments: None,
-                    speaker_count: None,
+            speaker_segments: None,
+            speaker_count: None,
         };
         let update2 = TranscriptionUpdate {
             id: uuid2,
@@ -2567,8 +2563,8 @@ mod tests {
             text: None,
             confidence: None,
             error: None,
-                    speaker_segments: None,
-                    speaker_count: None,
+            speaker_segments: None,
+            speaker_count: None,
         };
 
         assert_ne!(update1.id, update2.id);
@@ -2613,8 +2609,8 @@ mod tests {
                 text: None,
                 confidence: None,
                 error: None,
-                    speaker_segments: None,
-                    speaker_count: None,
+                speaker_segments: None,
+                speaker_count: None,
             };
             assert!(!update.status.is_empty());
             assert_eq!(update.status, *status);
@@ -2630,8 +2626,8 @@ mod tests {
             text: None,
             confidence: None,
             error: None,
-                    speaker_segments: None,
-                    speaker_count: None,
+            speaker_segments: None,
+            speaker_count: None,
         };
 
         assert!(minimal_update.text.is_none());
@@ -2667,8 +2663,8 @@ mod tests {
             text: None,
             confidence: Some(0.0),
             error: None,
-                    speaker_segments: None,
-                    speaker_count: None,
+            speaker_segments: None,
+            speaker_count: None,
         };
         assert_eq!(zero_conf.confidence, Some(0.0));
 
@@ -2678,8 +2674,8 @@ mod tests {
             text: None,
             confidence: Some(1.0),
             error: None,
-                    speaker_segments: None,
-                    speaker_count: None,
+            speaker_segments: None,
+            speaker_count: None,
         };
         assert_eq!(max_conf.confidence, Some(1.0));
 
@@ -2689,8 +2685,8 @@ mod tests {
             text: None,
             confidence: Some(1.5), // Over 100%
             error: None,
-                    speaker_segments: None,
-                    speaker_count: None,
+            speaker_segments: None,
+            speaker_count: None,
         };
         assert_eq!(over_max.confidence, Some(1.5));
     }
@@ -2849,8 +2845,8 @@ mod tests {
             text: Some(&long_text),
             confidence: None,
             error: None,
-                    speaker_segments: None,
-                    speaker_count: None,
+            speaker_segments: None,
+            speaker_count: None,
         };
 
         assert_eq!(long_update.text.unwrap().len(), 10_000);
@@ -2883,8 +2879,8 @@ mod tests {
             text: Some("Complete transcription with high confidence"),
             confidence: Some(0.97),
             error: Some("Warning: Minor background noise detected"),
-                    speaker_segments: None,
-                    speaker_count: None,
+            speaker_segments: None,
+            speaker_count: None,
         };
 
         assert_eq!(update.status, "completed_comprehensive");
@@ -2989,8 +2985,8 @@ mod tests {
                 text: None,
                 confidence: Some(precision),
                 error: None,
-                    speaker_segments: None,
-                    speaker_count: None,
+                speaker_segments: None,
+                speaker_count: None,
             };
 
             assert_eq!(update.confidence.unwrap(), precision);
@@ -3075,8 +3071,8 @@ mod tests {
                 text: None,
                 confidence: None,
                 error: Some(error_msg),
-                    speaker_segments: None,
-                    speaker_count: None,
+                speaker_segments: None,
+                speaker_count: None,
             };
 
             assert!(update.error.is_some());
@@ -3128,8 +3124,8 @@ mod tests {
             text: Some("Debug text"),
             confidence: Some(0.88),
             error: None,
-                    speaker_segments: None,
-                    speaker_count: None,
+            speaker_segments: None,
+            speaker_count: None,
         };
 
         let debug_str = format!("{update:?}");
@@ -3877,8 +3873,8 @@ mod tests {
             text: None,
             confidence: None,
             error: None,
-                    speaker_segments: None,
-                    speaker_count: None,
+            speaker_segments: None,
+            speaker_count: None,
         };
         assert_eq!(minimal_update.status, "processing");
         assert!(minimal_update.text.is_none());
@@ -3892,8 +3888,8 @@ mod tests {
             text: None,
             confidence: None,
             error: Some("Network timeout"),
-                    speaker_segments: None,
-                    speaker_count: None,
+            speaker_segments: None,
+            speaker_count: None,
         };
         assert_eq!(error_update.status, "failed");
         assert!(error_update.error.is_some());
@@ -3906,8 +3902,8 @@ mod tests {
             text: Some("High quality audio"),
             confidence: Some(0.999),
             error: None,
-                    speaker_segments: None,
-                    speaker_count: None,
+            speaker_segments: None,
+            speaker_count: None,
         };
         assert!(high_confidence.confidence.unwrap() > 0.99);
     }
@@ -4303,8 +4299,8 @@ mod tests {
                 text: Some(s),
                 confidence: None,
                 error: None,
-                    speaker_segments: None,
-                    speaker_count: None,
+                speaker_segments: None,
+                speaker_count: None,
             };
             assert_eq!(update.text.unwrap(), *s);
         }
@@ -4731,8 +4727,8 @@ mod tests {
                 text: None,
                 confidence: None,
                 error: None,
-                    speaker_segments: None,
-                    speaker_count: None,
+                speaker_segments: None,
+                speaker_count: None,
             },
             TranscriptionUpdate {
                 id: Uuid::new_v4(),
@@ -4740,8 +4736,8 @@ mod tests {
                 text: Some("Partial transcription..."),
                 confidence: Some(0.5),
                 error: None,
-                    speaker_segments: None,
-                    speaker_count: None,
+                speaker_segments: None,
+                speaker_count: None,
             },
             TranscriptionUpdate {
                 id: Uuid::new_v4(),
@@ -4749,8 +4745,8 @@ mod tests {
                 text: Some("This is a complete transcription of the audio call."),
                 confidence: Some(0.95),
                 error: None,
-                    speaker_segments: None,
-                    speaker_count: None,
+                speaker_segments: None,
+                speaker_count: None,
             },
             TranscriptionUpdate {
                 id: Uuid::new_v4(),
@@ -4758,8 +4754,8 @@ mod tests {
                 text: None,
                 confidence: None,
                 error: Some("Network timeout during transcription"),
-                    speaker_segments: None,
-                    speaker_count: None,
+                speaker_segments: None,
+                speaker_count: None,
             },
             TranscriptionUpdate {
                 id: Uuid::new_v4(),
@@ -4767,8 +4763,8 @@ mod tests {
                 text: None,
                 confidence: Some(0.0), // Edge case: zero confidence
                 error: Some("Invalid audio format"),
-                    speaker_segments: None,
-                    speaker_count: None,
+                speaker_segments: None,
+                speaker_count: None,
             },
         ];
 
@@ -4986,8 +4982,8 @@ mod tests {
             text: Some("Test transcription"),
             confidence: Some(0.95),
             error: None,
-                    speaker_segments: None,
-                    speaker_count: None,
+            speaker_segments: None,
+            speaker_count: None,
         };
 
         let debug_str = format!("{transcription_update:?}");
@@ -5036,8 +5032,8 @@ mod tests {
             text: Some("Full transcription text"),
             confidence: Some(0.95),
             error: None,
-                    speaker_segments: None,
-                    speaker_count: None,
+            speaker_segments: None,
+            speaker_count: None,
         };
         let debug_str = format!("{update_full:?}");
         assert!(debug_str.contains("TranscriptionUpdate"));
@@ -5052,8 +5048,8 @@ mod tests {
             text: None,
             confidence: None,
             error: None,
-                    speaker_segments: None,
-                    speaker_count: None,
+            speaker_segments: None,
+            speaker_count: None,
         };
         let debug_str_minimal = format!("{update_minimal:?}");
         assert!(debug_str_minimal.contains("pending"));
@@ -5066,8 +5062,8 @@ mod tests {
             text: None,
             confidence: None,
             error: Some("Processing failed"),
-                    speaker_segments: None,
-                    speaker_count: None,
+            speaker_segments: None,
+            speaker_count: None,
         };
         let debug_str_error = format!("{update_with_error:?}");
         assert!(debug_str_error.contains("failed"));
@@ -5080,8 +5076,8 @@ mod tests {
             text: Some("Test"),
             confidence: Some(0.0),
             error: None,
-                    speaker_segments: None,
-                    speaker_count: None,
+            speaker_segments: None,
+            speaker_count: None,
         };
         if let Some(conf) = update_confidence.confidence {
             assert!((0.0..=1.0).contains(&conf));
@@ -5093,8 +5089,8 @@ mod tests {
             text: Some("Test"),
             confidence: Some(1.0),
             error: None,
-                    speaker_segments: None,
-                    speaker_count: None,
+            speaker_segments: None,
+            speaker_count: None,
         };
         if let Some(conf) = update_confidence_max.confidence {
             assert!((0.0..=1.0).contains(&conf));
@@ -5267,8 +5263,8 @@ mod tests {
             text: Some(""),
             confidence: Some(0.5),
             error: Some(""),
-                    speaker_segments: None,
-                    speaker_count: None,
+            speaker_segments: None,
+            speaker_count: None,
         };
         let debug_str = format!("{update_empty_text:?}");
         assert!(debug_str.contains("TranscriptionUpdate"));
@@ -5280,8 +5276,8 @@ mod tests {
             text: Some("Text with 日本語 and émojis 🎉"),
             confidence: Some(0.8),
             error: None,
-                    speaker_segments: None,
-                    speaker_count: None,
+            speaker_segments: None,
+            speaker_count: None,
         };
         let debug_str_special = format!("{update_special_chars:?}");
         assert!(debug_str_special.contains("completed"));
@@ -5294,8 +5290,8 @@ mod tests {
             text: Some(&long_text),
             confidence: Some(0.9),
             error: None,
-                    speaker_segments: None,
-                    speaker_count: None,
+            speaker_segments: None,
+            speaker_count: None,
         };
         let debug_str_long = format!("{update_long_text:?}");
         assert!(debug_str_long.contains("completed"));
@@ -5710,8 +5706,8 @@ mod tests {
             text: Some("test_text"),
             confidence: Some(0.75),
             error: Some("test_error"),
-                    speaker_segments: None,
-                    speaker_count: None,
+            speaker_segments: None,
+            speaker_count: None,
         };
 
         let debug_str = format!("{transcription_update:?}");
@@ -5805,8 +5801,8 @@ mod tests {
             text: Some("\n\t\r\"Test with escapes\""),
             confidence: Some(0.999_999),
             error: Some("Error\nwith\nnewlines"),
-                    speaker_segments: None,
-                    speaker_count: None,
+            speaker_segments: None,
+            speaker_count: None,
         };
 
         let debug_str = format!("{update_extreme:?}");
@@ -5828,16 +5824,17 @@ mod tests {
 
         // Test filter with exact bounds
         if let Some(from) = filter_complex.from_date
-            && let Some(to) = filter_complex.to_date {
-                assert!(from <= to);
-            }
+            && let Some(to) = filter_complex.to_date
+        {
+            assert!(from <= to);
+        }
 
         // UploadLogParams with extreme values
         let params_extreme = UploadLogParams {
             client_ip: "255.255.255.255".parse().unwrap(),
             user_agent: Some("A".repeat(500)), // Very long user agent
             api_key_id: Some("1".repeat(100)), // Long key ID
-            system_id: Some(String::new()),   // Empty system ID
+            system_id: Some(String::new()),    // Empty system ID
             success: true,
             error_message: None,
             filename: Some("file.with.many.dots.and.a.very.long.extension.mp3".to_string()),
@@ -5892,8 +5889,8 @@ mod tests {
             text: Some(""),
             confidence: Some(0.5),
             error: Some(""),
-                    speaker_segments: None,
-                    speaker_count: None,
+            speaker_segments: None,
+            speaker_count: None,
         };
 
         assert_eq!(update_empty.status.len(), 0);
@@ -5987,10 +5984,16 @@ mod tests {
 
             match params.client_ip {
                 std::net::IpAddr::V4(_) => {
-                    assert!(!ip_str.contains(':'), "Expected IPv4 but got IPv6 for {ip_str}");
+                    assert!(
+                        !ip_str.contains(':'),
+                        "Expected IPv4 but got IPv6 for {ip_str}"
+                    );
                 }
                 std::net::IpAddr::V6(_) => {
-                    assert!(ip_str.contains(':'), "Expected IPv6 but got IPv4 for {ip_str}");
+                    assert!(
+                        ip_str.contains(':'),
+                        "Expected IPv6 but got IPv4 for {ip_str}"
+                    );
                 }
             }
         }
@@ -6009,8 +6012,8 @@ mod tests {
             text: Some(&long_string),
             confidence: Some(0.999_999_999_999_999),
             error: Some(&long_string),
-                    speaker_segments: None,
-                    speaker_count: None,
+            speaker_segments: None,
+            speaker_count: None,
         };
 
         let debug_output = format!("{update_max:?}");
@@ -6088,11 +6091,11 @@ mod tests {
 
         // UploadStats with fractional precision testing
         let fractional_times = [
-            0.000_000_000_001,           // Picosecond precision
+            0.000_000_000_001,        // Picosecond precision
             0.123_456_789_012_345_68, // Maximum f64 precision
-            999_999.999_999_999,         // Large with precision
-            std::f64::consts::PI,        // Mathematical constant
-            std::f64::consts::E,         // Another mathematical constant
+            999_999.999_999_999,      // Large with precision
+            std::f64::consts::PI,     // Mathematical constant
+            std::f64::consts::E,      // Another mathematical constant
         ];
 
         for (i, &time) in fractional_times.iter().enumerate() {
@@ -6127,8 +6130,8 @@ mod tests {
             text: Some("Text with \"quotes\" and 'apostrophes' and \n newlines \t tabs"),
             confidence: Some(0.123_456_79),
             error: Some("Error: \"Something went wrong\" at line 42"),
-                    speaker_segments: None,
-                    speaker_count: None,
+            speaker_segments: None,
+            speaker_count: None,
         };
 
         let debug_complex = format!("{complex_update:?}");

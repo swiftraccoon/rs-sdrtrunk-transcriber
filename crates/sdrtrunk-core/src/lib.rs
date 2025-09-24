@@ -125,7 +125,9 @@ pub mod context_error {
 // Re-export commonly used types
 pub use config::Config;
 pub use error::{Error, Result};
-pub use types::{FileData, RadioCall, SystemId, TalkgroupId, TranscriptionConfig, TranscriptionStatus};
+pub use types::{
+    FileData, RadioCall, SystemId, TalkgroupId, TranscriptionConfig, TranscriptionStatus,
+};
 
 /// Initialize the logging system
 ///

@@ -68,20 +68,23 @@ fn bench_path_operations(c: &mut Criterion) {
             for path in &test_paths {
                 if let Some(ext) = path.extension()
                     && let Some(ext_str) = ext.to_str()
-                        && valid_extensions.contains(&ext_str.to_lowercase().as_str()) {
-                            valid_count += 1;
-                        }
+                    && valid_extensions.contains(&ext_str.to_lowercase().as_str())
+                {
+                    valid_count += 1;
+                }
             }
             black_box(valid_count)
         })
     });
 
     // Benchmark pattern matching for SDRTrunk files
-    let _patterns = ["System*_TG*_*.mp3",
+    let _patterns = [
+        "System*_TG*_*.mp3",
         "Metro_TG*_*.mp3",
         "Fire_TG*_*.mp3",
         "Police_TG*_*.mp3",
-        "*_TG*_202403*.mp3"];
+        "*_TG*_202403*.mp3",
+    ];
 
     group.bench_function("pattern_matching", |b| {
         b.iter(|| {
@@ -178,15 +181,17 @@ fn bench_queue_operations(c: &mut Criterion) {
                         pending.push(file.clone());
 
                         // Every 10 files, process some
-                        if i % 10 == 0 && !pending.is_empty()
-                            && let Some(file) = pending.pop() {
-                                processing.push(file.clone());
+                        if i % 10 == 0
+                            && !pending.is_empty()
+                            && let Some(file) = pending.pop()
+                        {
+                            processing.push(file.clone());
 
-                                // Simulate completion
-                                if processing.len() > 5 {
-                                    completed.push(processing.remove(0));
-                                }
+                            // Simulate completion
+                            if processing.len() > 5 {
+                                completed.push(processing.remove(0));
                             }
+                        }
                     }
 
                     black_box((pending.len(), processing.len(), completed.len()))

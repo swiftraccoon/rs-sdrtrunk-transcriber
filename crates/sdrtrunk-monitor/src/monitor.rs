@@ -402,7 +402,7 @@ impl FileMonitor {
         &self,
         directory: &Path,
         files: &mut Vec<PathBuf>,
-        _depth: usize,  // Keep for API compatibility
+        _depth: usize, // Keep for API compatibility
     ) -> Result<()> {
         const MAX_DEPTH: usize = 10;
 

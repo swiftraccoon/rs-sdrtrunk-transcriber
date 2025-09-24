@@ -451,26 +451,27 @@ mod tests {
         config.database.url = "sqlite::memory:".to_string();
 
         if let Ok(db) = Database::new(&config).await
-            && db.migrate().await.is_ok() {
-                let state = Arc::new(AppState::new(config, db.pool().clone()).unwrap());
+            && db.migrate().await.is_ok()
+        {
+            let state = Arc::new(AppState::new(config, db.pool().clone()).unwrap());
 
-                // Test successful health check
-                let result = health_check(State(state.clone())).await;
+            // Test successful health check
+            let result = health_check(State(state.clone())).await;
 
-                match result {
-                    Ok(json_response) => {
-                        let health = json_response.0;
-                        assert_eq!(health.status, "healthy");
-                        assert!(health.database.connected);
-                        assert!(health.uptime_seconds > 0); // Should have positive uptime
-                        assert!(!health.version.is_empty());
-                    }
-                    Err(status) => {
-                        // Database connection might fail in test environment, that's ok
-                        assert_eq!(status, axum::http::StatusCode::SERVICE_UNAVAILABLE);
-                    }
+            match result {
+                Ok(json_response) => {
+                    let health = json_response.0;
+                    assert_eq!(health.status, "healthy");
+                    assert!(health.database.connected);
+                    assert!(health.uptime_seconds > 0); // Should have positive uptime
+                    assert!(!health.version.is_empty());
+                }
+                Err(status) => {
+                    // Database connection might fail in test environment, that's ok
+                    assert_eq!(status, axum::http::StatusCode::SERVICE_UNAVAILABLE);
                 }
             }
+        }
     }
 
     #[tokio::test]
@@ -486,23 +487,24 @@ mod tests {
         config.database.url = "sqlite::memory:".to_string();
 
         if let Ok(db) = Database::new(&config).await
-            && db.migrate().await.is_ok() {
-                let state = Arc::new(AppState::new(config, db.pool().clone()).unwrap());
+            && db.migrate().await.is_ok()
+        {
+            let state = Arc::new(AppState::new(config, db.pool().clone()).unwrap());
 
-                // Test successful readiness check
-                let result = readiness_check(State(state.clone())).await;
+            // Test successful readiness check
+            let result = readiness_check(State(state.clone())).await;
 
-                match result {
-                    Ok(json_response) => {
-                        let readiness = json_response.0;
-                        assert!(readiness.ready);
-                    }
-                    Err(status) => {
-                        // Database connection might fail in test environment, that's ok
-                        assert_eq!(status, axum::http::StatusCode::SERVICE_UNAVAILABLE);
-                    }
+            match result {
+                Ok(json_response) => {
+                    let readiness = json_response.0;
+                    assert!(readiness.ready);
+                }
+                Err(status) => {
+                    // Database connection might fail in test environment, that's ok
+                    assert_eq!(status, axum::http::StatusCode::SERVICE_UNAVAILABLE);
                 }
             }
+        }
     }
 
     #[tokio::test]
@@ -517,36 +519,37 @@ mod tests {
         config.database.url = "sqlite::memory:".to_string();
 
         if let Ok(db) = Database::new(&config).await
-            && db.migrate().await.is_ok() {
-                let state = Arc::new(AppState::new(config, db.pool().clone()).unwrap());
+            && db.migrate().await.is_ok()
+        {
+            let state = Arc::new(AppState::new(config, db.pool().clone()).unwrap());
 
-                // Test database health check
-                let result = check_database_health(&state).await;
+            // Test database health check
+            let result = check_database_health(&state).await;
 
-                match result {
-                    Ok(db_health) => {
-                        assert!(db_health.connected);
-                        // response_time_ms is u32, so it's always >= 0 - check it's reasonable instead
-                        assert!(
-                            db_health.response_time_ms < 5000,
-                            "Database response time too high"
-                        );
-                        assert!(db_health.pool_stats.max_connections > 0);
-                        // These are u32, always >= 0 - check they're within expected range
-                        assert!(
-                            db_health.pool_stats.idle_connections
-                                <= db_health.pool_stats.max_connections
-                        );
-                        assert!(
-                            db_health.pool_stats.connections_in_use
-                                <= db_health.pool_stats.max_connections
-                        );
-                    }
-                    Err(_) => {
-                        // Database health check might fail in test environment, that's acceptable
-                    }
+            match result {
+                Ok(db_health) => {
+                    assert!(db_health.connected);
+                    // response_time_ms is u32, so it's always >= 0 - check it's reasonable instead
+                    assert!(
+                        db_health.response_time_ms < 5000,
+                        "Database response time too high"
+                    );
+                    assert!(db_health.pool_stats.max_connections > 0);
+                    // These are u32, always >= 0 - check they're within expected range
+                    assert!(
+                        db_health.pool_stats.idle_connections
+                            <= db_health.pool_stats.max_connections
+                    );
+                    assert!(
+                        db_health.pool_stats.connections_in_use
+                            <= db_health.pool_stats.max_connections
+                    );
+                }
+                Err(_) => {
+                    // Database health check might fail in test environment, that's acceptable
                 }
             }
+        }
     }
 
     #[test]

@@ -570,19 +570,30 @@ pub async fn handle_call_upload(
 
                 match transcription_pool.try_submit(transcription_request) {
                     Ok(()) => {
-                        info!("Transcription request submitted for call {} (queue: {}/{})", call_id, queue_len + 1, queue_capacity);
+                        info!(
+                            "Transcription request submitted for call {} (queue: {}/{})",
+                            call_id,
+                            queue_len + 1,
+                            queue_capacity
+                        );
                     }
                     Err(e) => {
-                        error!("Failed to submit transcription for call {} (queue full: {}/{}): {}", call_id, queue_len, queue_capacity, e);
+                        error!(
+                            "Failed to submit transcription for call {} (queue full: {}/{}): {}",
+                            call_id, queue_len, queue_capacity, e
+                        );
                         // Update database to mark transcription as failed due to queue full
                         let db_pool = state.pool.clone();
                         tokio::spawn(async move {
                             if let Err(db_err) = sdrtrunk_database::update_transcription_status(
-                                &db_pool,
-                                call_id,
-                                "failed",
-                            ).await {
-                                error!("Failed to update transcription status for call {}: {}", call_id, db_err);
+                                &db_pool, call_id, "failed",
+                            )
+                            .await
+                            {
+                                error!(
+                                    "Failed to update transcription status for call {}: {}",
+                                    call_id, db_err
+                                );
                             }
                         });
                     }
@@ -1839,25 +1850,26 @@ mod tests {
 
         // Try to create database - if it fails, just test the function signature
         if let Ok(db) = Database::new(&config).await
-            && db.migrate().await.is_ok() {
-                let state = Arc::new(AppState::new(config, db.pool().clone()).unwrap());
-                let client_ip = IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1));
-                let user_agent = Some("TestAgent/1.0".to_string());
+            && db.migrate().await.is_ok()
+        {
+            let state = Arc::new(AppState::new(config, db.pool().clone()).unwrap());
+            let client_ip = IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1));
+            let user_agent = Some("TestAgent/1.0".to_string());
 
-                let (status, error_json) = upload_error(
-                    &state,
-                    client_ip,
-                    user_agent,
-                    Some("test-key".to_string()),
-                    Some("test-system".to_string()),
-                    "Test error message",
-                )
-                .await;
+            let (status, error_json) = upload_error(
+                &state,
+                client_ip,
+                user_agent,
+                Some("test-key".to_string()),
+                Some("test-system".to_string()),
+                "Test error message",
+            )
+            .await;
 
-                assert_eq!(status, StatusCode::BAD_REQUEST);
-                assert!(!error_json.success);
-                assert_eq!(error_json.error, "Test error message");
-            }
+            assert_eq!(status, StatusCode::BAD_REQUEST);
+            assert!(!error_json.success);
+            assert_eq!(error_json.error, "Test error message");
+        }
     }
 
     #[test]
@@ -2106,10 +2118,12 @@ mod tests {
             ("Mixed.Case.WaV", "wav", true),
         ];
 
-        let allowed_extensions = ["mp3".to_string(),
+        let allowed_extensions = [
+            "mp3".to_string(),
             "wav".to_string(),
             "m4a".to_string(),
-            "flac".to_string()];
+            "flac".to_string(),
+        ];
 
         for (filename, expected_ext, should_be_allowed) in test_filenames {
             let file_extension = std::path::Path::new(filename)

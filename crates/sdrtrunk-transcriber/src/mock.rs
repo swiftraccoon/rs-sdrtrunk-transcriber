@@ -1,9 +1,7 @@
 //! Mock transcription service for testing
 
 use crate::error::TranscriptionResult;
-use crate::service::{
-    AudioValidation, ServiceCapabilities, ServiceHealth, TranscriptionService,
-};
+use crate::service::{AudioValidation, ServiceCapabilities, ServiceHealth, TranscriptionService};
 use crate::types::{
     SpeakerSegment, TranscriptionConfig, TranscriptionRequest, TranscriptionResponse,
     TranscriptionSegment, TranscriptionStats, TranscriptionStatus, WordSegment,
@@ -13,7 +11,7 @@ use chrono::Utc;
 use std::collections::HashMap;
 use std::path::Path;
 use std::sync::{Arc, Mutex};
-use tokio::time::{sleep, Duration};
+use tokio::time::{Duration, sleep};
 use uuid::Uuid;
 
 /// Mock transcription service for testing
@@ -250,10 +248,10 @@ impl TranscriptionService for MockTranscriptionService {
         {
             let mut stats = self.stats.lock().unwrap();
             stats.successful += 1;
-            stats.avg_processing_time_ms =
-                (stats.avg_processing_time_ms * (stats.successful - 1) as f64
-                    + self.processing_delay_ms as f64)
-                    / stats.successful as f64;
+            stats.avg_processing_time_ms = (stats.avg_processing_time_ms
+                * (stats.successful - 1) as f64
+                + self.processing_delay_ms as f64)
+                / stats.successful as f64;
             stats.total_audio_duration += 15.0; // Mock 15 seconds of audio
         }
 
@@ -318,11 +316,7 @@ impl TranscriptionService for MockTranscriptionService {
             word_timestamps: true,
             vad: false,
             language_detection: false,
-            supported_formats: vec![
-                "mp3".to_string(),
-                "wav".to_string(),
-                "flac".to_string(),
-            ],
+            supported_formats: vec!["mp3".to_string(), "wav".to_string(), "flac".to_string()],
             max_duration_seconds: Some(3600.0),
             supported_languages: vec!["en".to_string()],
             batch_processing: false,
@@ -360,10 +354,7 @@ mod tests {
         let config = TranscriptionConfig::default();
         service.initialize(&config).await.unwrap();
 
-        let request = TranscriptionRequest::new(
-            Uuid::new_v4(),
-            PathBuf::from("/test/audio.mp3"),
-        );
+        let request = TranscriptionRequest::new(Uuid::new_v4(), PathBuf::from("/test/audio.mp3"));
 
         let response = service.transcribe(&request).await.unwrap();
         assert_eq!(response.status, TranscriptionStatus::Completed);
@@ -373,15 +364,11 @@ mod tests {
 
     #[tokio::test]
     async fn test_mock_service_with_failure() {
-        let mut service = MockTranscriptionService::new()
-            .with_failure("Test failure");
+        let mut service = MockTranscriptionService::new().with_failure("Test failure");
         let config = TranscriptionConfig::default();
         service.initialize(&config).await.unwrap();
 
-        let request = TranscriptionRequest::new(
-            Uuid::new_v4(),
-            PathBuf::from("/test/audio.mp3"),
-        );
+        let request = TranscriptionRequest::new(Uuid::new_v4(), PathBuf::from("/test/audio.mp3"));
 
         let result = service.transcribe(&request).await;
         assert!(result.is_err());
@@ -396,10 +383,7 @@ mod tests {
         let initial_stats = service.get_stats().await.unwrap();
         assert_eq!(initial_stats.total_requests, 0);
 
-        let request = TranscriptionRequest::new(
-            Uuid::new_v4(),
-            PathBuf::from("/test/audio.mp3"),
-        );
+        let request = TranscriptionRequest::new(Uuid::new_v4(), PathBuf::from("/test/audio.mp3"));
         service.transcribe(&request).await.unwrap();
 
         let stats = service.get_stats().await.unwrap();
@@ -427,10 +411,7 @@ mod tests {
         let config = TranscriptionConfig::default();
         service.initialize(&config).await.unwrap();
 
-        let request = TranscriptionRequest::new(
-            Uuid::new_v4(),
-            PathBuf::from("/test/audio.mp3"),
-        );
+        let request = TranscriptionRequest::new(Uuid::new_v4(), PathBuf::from("/test/audio.mp3"));
         let request_id = request.id;
 
         service.transcribe(&request).await.unwrap();
@@ -453,10 +434,7 @@ mod tests {
     #[test]
     fn test_mock_text_generation() {
         let service = MockTranscriptionService::new();
-        let request = TranscriptionRequest::new(
-            Uuid::new_v4(),
-            PathBuf::from("/test/audio.mp3"),
-        );
+        let request = TranscriptionRequest::new(Uuid::new_v4(), PathBuf::from("/test/audio.mp3"));
 
         let text = service.generate_mock_text(&request);
         assert!(text.contains("Mock transcription"));

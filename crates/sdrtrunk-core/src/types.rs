@@ -70,7 +70,7 @@ pub struct TranscriptionConfig {
     /// Processing timeout in seconds
     pub timeout_seconds: u64,
 
-    /// Python service path (for WhisperX)
+    /// Python service path (for `WhisperX`)
     pub python_path: Option<PathBuf>,
 
     /// Service port (for HTTP-based services)

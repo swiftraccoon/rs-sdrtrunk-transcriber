@@ -3,9 +3,9 @@
 use crate::error::{TranscriptionError, TranscriptionResult};
 use crate::service::TranscriptionService;
 use crate::types::{TranscriptionRequest, TranscriptionResponse};
-use sdrtrunk_core::{TranscriptionConfig, TranscriptionStatus};
-use sdrtrunk_core::context_error::Result as CoreResult;
 use async_channel::{Receiver, Sender};
+use sdrtrunk_core::context_error::Result as CoreResult;
+use sdrtrunk_core::{TranscriptionConfig, TranscriptionStatus};
 use sdrtrunk_database::{queries, queries::TranscriptionUpdate};
 use sqlx::PgPool;
 use std::sync::Arc;
@@ -64,10 +64,15 @@ impl TranscriptionWorkerPool {
 
     /// Start the worker pool
     pub async fn start(&mut self) -> CoreResult<()> {
-        info!("Starting transcription worker pool with {} workers", self.config.workers);
+        info!(
+            "Starting transcription worker pool with {} workers",
+            self.config.workers
+        );
 
         for i in 0..self.config.workers {
-            let worker = self.spawn_worker(i).await
+            let worker = self
+                .spawn_worker(i)
+                .await
                 .map_err(|e| sdrtrunk_core::context_error::ContextError::from(e))?;
             self.workers.push(worker);
         }
@@ -86,16 +91,25 @@ impl TranscriptionWorkerPool {
             info!("Worker {} started", id);
 
             while let Ok(request) = receiver.recv().await {
-                info!("Worker {} picked up request {} for call {}", id, request.id, request.call_id);
+                info!(
+                    "Worker {} picked up request {} for call {}",
+                    id, request.id, request.call_id
+                );
                 let call_id = request.call_id;
 
-                info!("Worker {} submitting transcription request for call {} with webhook callback", id, call_id);
+                info!(
+                    "Worker {} submitting transcription request for call {} with webhook callback",
+                    id, call_id
+                );
                 match service.transcribe(&request).await {
                     Ok(response) => {
                         // With webhook pattern, we just log that the request was accepted
                         // The actual result will come via webhook callback
                         if response.status == TranscriptionStatus::Processing {
-                            info!("Worker {} transcription request accepted for call {} - webhook will handle completion", id, call_id);
+                            info!(
+                                "Worker {} transcription request accepted for call {} - webhook will handle completion",
+                                id, call_id
+                            );
 
                             // Update database to show it's processing
                             if let Err(e) = queries::RadioCallQueries::update_transcription_status(
@@ -116,7 +130,10 @@ impl TranscriptionWorkerPool {
                             }
                         } else {
                             // Backward compatibility: handle immediate response if not using webhook
-                            warn!("Worker {} got immediate response (non-webhook pattern) for call {}", id, call_id);
+                            warn!(
+                                "Worker {} got immediate response (non-webhook pattern) for call {}",
+                                id, call_id
+                            );
 
                             // Still send to response channel for backward compatibility
                             if let Err(e) = response_sender.send(response).await {
@@ -142,7 +159,10 @@ impl TranscriptionWorkerPool {
                         )
                         .await
                         {
-                            error!("Worker {} failed to update database with error status: {}", id, db_err);
+                            error!(
+                                "Worker {} failed to update database with error status: {}",
+                                id, db_err
+                            );
                         }
                     }
                 }
@@ -229,7 +249,9 @@ mod tests {
 
     async fn create_test_pool() -> PgPool {
         // Create a test database pool
-        PgPool::connect("postgres://localhost/test_db").await.unwrap()
+        PgPool::connect("postgres://localhost/test_db")
+            .await
+            .unwrap()
     }
 
     #[tokio::test]
@@ -262,10 +284,7 @@ mod tests {
         let mut pool = TranscriptionWorkerPool::new(config, service, db_pool);
         pool.start().await.unwrap();
 
-        let request = TranscriptionRequest::new(
-            Uuid::new_v4(),
-            PathBuf::from("/test/audio.mp3"),
-        );
+        let request = TranscriptionRequest::new(Uuid::new_v4(), PathBuf::from("/test/audio.mp3"));
 
         pool.submit(request).await.unwrap();
         assert!(pool.queue_depth() <= 1);
@@ -288,20 +307,15 @@ mod tests {
 
         // Fill the queue
         for _ in 0..2 {
-            let request = TranscriptionRequest::new(
-                Uuid::new_v4(),
-                PathBuf::from("/test/audio.mp3"),
-            );
+            let request =
+                TranscriptionRequest::new(Uuid::new_v4(), PathBuf::from("/test/audio.mp3"));
             pool.submit(request).await.unwrap();
         }
 
         assert!(pool.is_queue_full());
 
         // This should fail
-        let request = TranscriptionRequest::new(
-            Uuid::new_v4(),
-            PathBuf::from("/test/audio.mp3"),
-        );
+        let request = TranscriptionRequest::new(Uuid::new_v4(), PathBuf::from("/test/audio.mp3"));
         let result = pool.submit(request).await;
         assert!(result.is_err());
     }

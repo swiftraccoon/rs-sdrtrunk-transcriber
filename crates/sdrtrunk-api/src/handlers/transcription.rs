@@ -1,19 +1,14 @@
 //! Transcription webhook callback handler
 
-use axum::{
-    extract::State,
-    http::StatusCode,
-    response::IntoResponse,
-    Json,
-};
+use axum::{Json, extract::State, http::StatusCode, response::IntoResponse};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use tracing::{error, info, warn};
 use uuid::Uuid;
 
 use crate::state::AppState;
-use std::sync::Arc;
 use sdrtrunk_database::queries::{RadioCallQueries, TranscriptionUpdate};
+use std::sync::Arc;
 
 /// Webhook callback payload from WhisperX service
 #[derive(Debug, Deserialize)]
@@ -61,16 +56,13 @@ pub async fn transcription_callback(
     };
 
     // Prepare speaker segments JSON if present
-    let speaker_segments_json = payload
-        .speaker_segments
-        .as_ref()
-        .and_then(|segments| {
-            if segments.is_empty() {
-                None
-            } else {
-                Some(serde_json::Value::Array(segments.clone()))
-            }
-        });
+    let speaker_segments_json = payload.speaker_segments.as_ref().and_then(|segments| {
+        if segments.is_empty() {
+            None
+        } else {
+            Some(serde_json::Value::Array(segments.clone()))
+        }
+    });
 
     // Update database with transcription result
     let update_result = RadioCallQueries::update_transcription_status(
