@@ -6,6 +6,22 @@
 
 This is the preferred method if you want to use GPU acceleration.
 
+#### Using uv (Recommended)
+
+```bash
+# Install uv if not already installed
+curl -LsSf https://astral.sh/uv/install.sh | sh
+
+# Create virtual environment and install dependencies
+uv venv
+uv pip install -r requirements.txt
+
+# Run service
+uv run python service.py
+```
+
+#### Using pip (Traditional)
+
 ```bash
 # Create virtual environment
 python3 -m venv venv
@@ -44,6 +60,19 @@ sudo systemctl enable whisperx
 sudo systemctl start whisperx
 ```
 
+## Architecture
+
+### Webhook-Based Processing
+
+This service uses a webhook-based architecture for high-throughput transcription:
+
+1. **Request Acceptance**: API calls return immediately with `202 Accepted`
+2. **Queue Processing**: Requests are processed one at a time in a background queue
+3. **Webhook Callbacks**: Results are sent to the configured callback URL when complete
+4. **Load Leveling**: The queue prevents overload and provides backpressure
+
+This design allows the main application to handle burst traffic without blocking on transcription processing.
+
 ## Configuration
 
 ### Environment Variables
@@ -77,6 +106,21 @@ export WHISPERX_HF_TOKEN=hf_xxxxxxxxxxxxx
 ## Running Without Docker (Recommended)
 
 ### Development Mode
+
+#### Using uv (Recommended)
+
+```bash
+# Run with default settings (CPU)
+uv run python service.py
+
+# Run with GPU
+WHISPERX_DEVICE=cuda uv run python service.py
+
+# Run with specific model
+WHISPERX_MODEL_SIZE=medium WHISPERX_DEVICE=cuda uv run python service.py
+```
+
+#### Using traditional venv
 
 ```bash
 # Activate virtual environment

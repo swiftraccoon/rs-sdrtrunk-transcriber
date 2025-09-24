@@ -18,7 +18,7 @@ use std::sync::Arc;
 use tokio::process::{Child, Command};
 use tokio::sync::RwLock;
 use tokio::time::{sleep, Duration};
-use tracing::info;
+use tracing::{error, info};
 use uuid::Uuid;
 
 /// Python service request format
@@ -31,6 +31,7 @@ struct PythonRequest {
     options: PythonOptions,
     retry_count: u32,
     priority: i32,
+    callback_url: Option<String>,
 }
 
 #[derive(Debug, Serialize)]
@@ -124,7 +125,10 @@ impl WhisperXService {
         let service_url = format!("http://localhost:{}", service_port);
 
         let client = reqwest::Client::builder()
-            .timeout(Duration::from_secs(config.timeout_seconds))
+            .timeout(Duration::from_secs(30))  // Total request timeout
+            .connect_timeout(Duration::from_secs(5))  // Connection timeout
+            .pool_idle_timeout(Duration::from_secs(90))  // Keep connections alive for 90 seconds
+            .pool_max_idle_per_host(10)  // Keep up to 10 idle connections
             .build()
             .unwrap();
 
@@ -148,20 +152,11 @@ impl WhisperXService {
 
         info!("Starting Python WhisperX service at {:?}", python_path);
 
-        // Build environment variables
-        let mut env = HashMap::new();
-        env.insert("WHISPERX_MODEL_SIZE", self.config.model_size.clone());
-        env.insert("WHISPERX_DEVICE", self.config.device.clone());
-        env.insert("WHISPERX_COMPUTE_TYPE", self.config.compute_type.clone());
-        env.insert("WHISPERX_BATCH_SIZE", self.config.batch_size.to_string());
-        env.insert(
-            "WHISPERX_PORT",
-            self.config.service_port
-                .expect("service_port must be configured")
-                .to_string(),
-        );
+        // Python service will read its configuration from config.toml directly
+        // We only need to pass the port if not already configured there
 
-        // Start Python process
+        // Start Python process with multiple workers for better concurrency
+        // Note: Workers share the same model in memory, so this is memory-efficient
         let child = Command::new("python")
             .arg("-m")
             .arg("uvicorn")
@@ -173,7 +168,6 @@ impl WhisperXService {
                 .expect("service_port must be configured")
                 .to_string())
             .current_dir(&python_path)
-            .envs(&env)
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
             .spawn()

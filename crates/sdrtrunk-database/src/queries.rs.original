@@ -944,6 +944,8 @@ mod tests {
             transcription_confidence: Some(0.95),
             transcription_status: TranscriptionStatus::Completed,
             transcription_error: None,
+                    speaker_segments: None,
+                    speaker_count: None,
             transcription_started_at: Some(chrono::Utc::now() - chrono::Duration::seconds(30)),
             transcription_completed_at: Some(chrono::Utc::now()),
             speaker_segments: Some(
@@ -1524,6 +1526,8 @@ mod tests {
             transcription_confidence: Some(0.98),
             transcription_status: TranscriptionStatus::Completed,
             transcription_error: None,
+                    speaker_segments: None,
+                    speaker_count: None,
             transcription_started_at: Some(chrono::Utc::now() - chrono::Duration::seconds(60)),
             transcription_completed_at: Some(chrono::Utc::now()),
             speaker_segments: Some(serde_json::json!([
@@ -2833,8 +2837,6 @@ mod tests {
             text: Some(""), // Empty text
             confidence: None,
             error: Some(""), // Empty error
-            speaker_count: None,
-            speaker_segments: None,
         };
 
         assert!(empty_update.status.is_empty());
@@ -3273,9 +3275,6 @@ mod tests {
                 }
                 TranscriptionStatus::Failed => {
                     assert!(status_str.contains("failed") || status_str.contains("Failed"));
-                }
-                TranscriptionStatus::Cancelled => {
-                    assert!(status_str.contains("cancelled") || status_str.contains("Cancelled"));
                 }
             }
         }
@@ -5516,8 +5515,6 @@ mod tests {
                 text,
                 confidence,
                 error,
-                speaker_count: None,
-                speaker_segments: None,
             };
 
             let debug_str = format!("{update:?}");

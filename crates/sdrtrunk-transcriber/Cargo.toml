@@ -13,6 +13,10 @@ categories = ["multimedia::audio", "api-bindings"]
 [dependencies]
 # Workspace dependencies
 sdrtrunk-core = { path = "../sdrtrunk-core" }
+sdrtrunk-database = { path = "../sdrtrunk-database" }
+
+# Database
+sqlx = { workspace = true }
 
 # Async runtime
 tokio = { workspace = true, features = ["full"] }

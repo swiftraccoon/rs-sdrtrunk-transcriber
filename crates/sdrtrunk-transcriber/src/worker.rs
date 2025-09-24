@@ -2,8 +2,11 @@
 
 use crate::error::{TranscriptionError, TranscriptionResult};
 use crate::service::TranscriptionService;
-use crate::types::{TranscriptionConfig, TranscriptionRequest, TranscriptionResponse};
+use crate::types::{TranscriptionRequest, TranscriptionResponse};
+use sdrtrunk_core::{TranscriptionConfig, TranscriptionStatus};
 use async_channel::{Receiver, Sender};
+use sdrtrunk_database::{queries, queries::TranscriptionUpdate};
+use sqlx::PgPool;
 use std::sync::Arc;
 use tokio::task::JoinHandle;
 use tracing::{error, info, warn};
@@ -30,6 +33,9 @@ pub struct TranscriptionWorkerPool {
 
     /// Transcription service
     service: Arc<dyn TranscriptionService>,
+
+    /// Database pool
+    pool: PgPool,
 }
 
 impl TranscriptionWorkerPool {
@@ -37,6 +43,7 @@ impl TranscriptionWorkerPool {
     pub fn new(
         config: TranscriptionConfig,
         service: Arc<dyn TranscriptionService>,
+        pool: PgPool,
     ) -> Self {
         let queue_size = config.queue_size;
         let (sender, receiver) = async_channel::bounded(queue_size);
@@ -50,6 +57,7 @@ impl TranscriptionWorkerPool {
             response_receiver,
             workers: Vec::new(),
             service,
+            pool,
         }
     }
 
@@ -70,34 +78,70 @@ impl TranscriptionWorkerPool {
         let receiver = self.receiver.clone();
         let response_sender = self.response_sender.clone();
         let service = Arc::clone(&self.service);
+        let pool = self.pool.clone();
 
         let handle = tokio::spawn(async move {
             info!("Worker {} started", id);
 
             while let Ok(request) = receiver.recv().await {
-                info!("Worker {} processing request {}", id, request.id);
+                info!("Worker {} picked up request {} for call {}", id, request.id, request.call_id);
+                let call_id = request.call_id;
 
+                info!("Worker {} submitting transcription request for call {} with webhook callback", id, call_id);
                 match service.transcribe(&request).await {
                     Ok(response) => {
-                        // Log the transcription result
-                        if let Some(text) = &response.text {
-                            let display_text = if text.len() > 100 {
-                                format!("{}...", &text[..100])
-                            } else {
-                                text.clone()
-                            };
-                            info!("Worker {} transcription completed: {}", id, display_text);
-                        } else {
-                            info!("Worker {} transcription completed: (empty/no speech)", id);
-                        }
+                        // With webhook pattern, we just log that the request was accepted
+                        // The actual result will come via webhook callback
+                        if response.status == TranscriptionStatus::Processing {
+                            info!("Worker {} transcription request accepted for call {} - webhook will handle completion", id, call_id);
 
-                        if let Err(e) = response_sender.send(response).await {
-                            error!("Worker {} failed to send response: {}", id, e);
+                            // Update database to show it's processing
+                            if let Err(e) = queries::RadioCallQueries::update_transcription_status(
+                                &pool,
+                                TranscriptionUpdate {
+                                    id: call_id,
+                                    status: "processing",
+                                    text: None,
+                                    confidence: None,
+                                    error: None,
+                                    speaker_segments: None,
+                                    speaker_count: None,
+                                },
+                            )
+                            .await
+                            {
+                                error!("Worker {} failed to update processing status: {}", id, e);
+                            }
+                        } else {
+                            // Backward compatibility: handle immediate response if not using webhook
+                            warn!("Worker {} got immediate response (non-webhook pattern) for call {}", id, call_id);
+
+                            // Still send to response channel for backward compatibility
+                            if let Err(e) = response_sender.send(response).await {
+                                error!("Worker {} failed to send response: {}", id, e);
+                            }
                         }
                     }
                     Err(e) => {
                         error!("Worker {} transcription failed: {}", id, e);
-                        // TODO: Handle retry logic
+
+                        // Update database with error status
+                        if let Err(db_err) = queries::RadioCallQueries::update_transcription_status(
+                            &pool,
+                            TranscriptionUpdate {
+                                id: call_id,
+                                status: "failed",
+                                text: None,
+                                confidence: None,
+                                error: Some(&e.to_string()),
+                                speaker_segments: None,
+                                speaker_count: None,
+                            },
+                        )
+                        .await
+                        {
+                            error!("Worker {} failed to update database with error status: {}", id, db_err);
+                        }
                     }
                 }
             }
@@ -114,6 +158,24 @@ impl TranscriptionWorkerPool {
             .send(request)
             .await
             .map_err(|_| TranscriptionError::queue_full(self.config.queue_size))
+    }
+
+    /// Try to submit a transcription request without blocking
+    /// Returns Ok(()) if submitted successfully, Err if queue is full
+    pub fn try_submit(&self, request: TranscriptionRequest) -> TranscriptionResult<()> {
+        self.sender
+            .try_send(request)
+            .map_err(|_| TranscriptionError::queue_full(self.config.queue_size))
+    }
+
+    /// Get the current queue length for monitoring
+    pub fn queue_len(&self) -> usize {
+        self.sender.len()
+    }
+
+    /// Get the queue capacity
+    pub fn queue_capacity(&self) -> Option<usize> {
+        self.sender.capacity()
     }
 
     /// Get the next completed transcription
@@ -160,17 +222,25 @@ mod tests {
     use std::path::PathBuf;
     use uuid::Uuid;
 
+    async fn create_test_pool() -> PgPool {
+        // Create a test database pool
+        PgPool::connect("postgres://localhost/test_db").await.unwrap()
+    }
+
     #[tokio::test]
+    #[ignore = "Requires database connection"]
     async fn test_worker_pool_creation() {
         let config = TranscriptionConfig::default();
         let service = Arc::new(MockTranscriptionService::new());
-        let pool = TranscriptionWorkerPool::new(config, service);
+        let db_pool = create_test_pool().await;
+        let pool = TranscriptionWorkerPool::new(config, service, db_pool);
 
         assert_eq!(pool.queue_depth(), 0);
         assert!(!pool.is_queue_full());
     }
 
     #[tokio::test]
+    #[ignore = "Requires database connection"]
     async fn test_worker_pool_submit() {
         let config = TranscriptionConfig {
             workers: 1,
@@ -183,7 +253,8 @@ mod tests {
         service.initialize(&mut init_config).await.unwrap();
 
         let service = Arc::new(service);
-        let mut pool = TranscriptionWorkerPool::new(config, service);
+        let db_pool = create_test_pool().await;
+        let mut pool = TranscriptionWorkerPool::new(config, service, db_pool);
         pool.start().await.unwrap();
 
         let request = TranscriptionRequest::new(
@@ -207,7 +278,8 @@ mod tests {
         };
 
         let service = Arc::new(MockTranscriptionService::new());
-        let pool = TranscriptionWorkerPool::new(config, service);
+        let db_pool = create_test_pool().await;
+        let pool = TranscriptionWorkerPool::new(config, service, db_pool);
 
         // Fill the queue
         for _ in 0..2 {

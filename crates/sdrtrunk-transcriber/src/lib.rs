@@ -23,9 +23,10 @@ pub mod worker;
 
 pub use error::{TranscriptionError, TranscriptionResult};
 pub use service::TranscriptionService;
+pub use sdrtrunk_core::{TranscriptionConfig, TranscriptionStatus};
 pub use types::{
-    SpeakerSegment, TranscriptionConfig, TranscriptionOptions, TranscriptionRequest,
-    TranscriptionResponse, TranscriptionSegment, TranscriptionStatus, WordSegment,
+    SpeakerSegment, TranscriptionOptions, TranscriptionRequest,
+    TranscriptionResponse, TranscriptionSegment, WordSegment,
 };
 pub use worker::TranscriptionWorkerPool;
 

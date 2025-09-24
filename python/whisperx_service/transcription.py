@@ -6,6 +6,7 @@ import logging
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
+import numpy as np
 import torch
 import whisperx
 from tenacity import retry, stop_after_attempt, wait_exponential
@@ -54,11 +55,48 @@ class TranscriptionService:
 
             logger.info(f"Loading WhisperX model {config.model_size} on {self.device}")
 
+            # Build ASR options from config
+            asr_options = {
+                "beam_size": config.beam_size,
+                "best_of": config.best_of,
+                "patience": config.patience,
+                "length_penalty": config.length_penalty,
+                "repetition_penalty": config.repetition_penalty,
+                "no_repeat_ngram_size": config.no_repeat_ngram_size,
+                "temperatures": [config.temperature] if config.temperature_increment_on_fallback == 0 else
+                    list(np.arange(config.temperature, 1.0 + 1e-6, config.temperature_increment_on_fallback)),
+                "compression_ratio_threshold": config.compression_ratio_threshold,
+                "log_prob_threshold": config.logprob_threshold,
+                "no_speech_threshold": config.no_speech_threshold,
+                "condition_on_previous_text": config.condition_on_previous_text,
+                "prompt_reset_on_temperature": config.prompt_reset_on_temperature,
+                "initial_prompt": config.initial_prompt,
+                "prefix": config.prefix,
+                "suppress_blank": config.suppress_blank,
+                "suppress_tokens": [int(x) for x in config.suppress_tokens.split(",")] if config.suppress_tokens != "-1" else [-1],
+                "without_timestamps": config.without_timestamps,
+                "max_initial_timestamp": config.max_initial_timestamp,
+                "word_timestamps": config.word_timestamps,
+                "hallucination_silence_threshold": config.hallucination_silence_threshold,
+                "hotwords": config.hotwords.split(",") if config.hotwords else None,
+            }
+
+            # Add suppress_numerals if enabled
+            if config.suppress_numerals:
+                asr_options["suppress_numerals"] = True
+
+            # Add punctuation parameters if configured
+            if config.prepend_punctuations:
+                asr_options["prepend_punctuations"] = config.prepend_punctuations
+            if config.append_punctuations:
+                asr_options["append_punctuations"] = config.append_punctuations
+
             # Load transcription model
             self.model = whisperx.load_model(
                 config.model_size,
                 self.device,
                 compute_type=self.compute_type,
+                asr_options=asr_options,
                 download_root=str(config.model_cache_dir),
                 language=config.language if config.language else None,
             )
@@ -101,12 +139,12 @@ class TranscriptionService:
             logger.error(f"Failed to initialize models: {e}")
             raise
 
-    async def transcribe(
+    def transcribe_sync(
         self,
         audio_path: str,
         options: Optional[Dict] = None
     ) -> Dict:
-        """Transcribe audio file using WhisperX.
+        """Synchronous transcribe method for thread pool execution.
 
         Args:
             audio_path: Path to audio file
@@ -116,7 +154,7 @@ class TranscriptionService:
             Transcription result with segments and metadata
         """
         if not self._initialized:
-            await self.initialize()
+            raise RuntimeError("Transcription service not initialized. Service should be initialized at startup.")
 
         options = options or {}
 
@@ -177,11 +215,38 @@ class TranscriptionService:
 
                 # Assign speakers to words
                 result = whisperx.assign_word_speakers(diarize_segments, result)
-                result["speaker_segments"] = diarize_segments
+
+                # Convert DataFrame to list of SpeakerSegment dictionaries
+                speaker_segments = []
+                unique_speakers = set()
+                for _, row in diarize_segments.iterrows():
+                    speaker_segments.append({
+                        "speaker": row["speaker"],
+                        "start": float(row["start"]),
+                        "end": float(row["end"]),
+                        "confidence": None  # DataFrame doesn't include confidence
+                    })
+                    unique_speakers.add(row["speaker"])
+                result["speaker_segments"] = speaker_segments
+                result["speaker_count"] = len(unique_speakers)
 
             # Ensure text field exists (combine all segments if needed)
             if "text" not in result and "segments" in result:
-                result["text"] = " ".join(seg.get("text", "") for seg in result["segments"])
+                # Check if we have speaker information in segments
+                has_speakers = any(seg.get("speaker") for seg in result["segments"])
+
+                if has_speakers:
+                    # Format text with speaker labels for multi-speaker content
+                    formatted_segments = []
+                    for seg in result["segments"]:
+                        text = seg.get("text", "").strip()
+                        if text:  # Only include non-empty text
+                            speaker = seg.get("speaker", "UNKNOWN")
+                            formatted_segments.append(f"{speaker}: {text}")
+                    result["text"] = "\n".join(formatted_segments)
+                else:
+                    # Standard single-speaker format
+                    result["text"] = " ".join(seg.get("text", "") for seg in result["segments"])
             elif "text" not in result:
                 result["text"] = ""
 
@@ -191,6 +256,22 @@ class TranscriptionService:
                     if "id" not in seg:
                         seg["id"] = i
 
+            # Calculate overall confidence from word scores if available
+            confidence = None
+            if "segments" in result:
+                all_scores = []
+                for seg in result["segments"]:
+                    # Check for word-level scores (from alignment)
+                    if "words" in seg and seg["words"]:
+                        for word in seg["words"]:
+                            if "score" in word and word["score"] is not None:
+                                all_scores.append(word["score"])
+
+                # Calculate average confidence if we have scores
+                if all_scores:
+                    confidence = sum(all_scores) / len(all_scores)
+                    logger.info(f"Calculated average confidence: {confidence:.3f} from {len(all_scores)} word scores")
+
             # Add metadata
             result["audio_path"] = audio_path
             result["model_size"] = config.model_size
@@ -198,9 +279,12 @@ class TranscriptionService:
 
             # Ensure required fields exist
             result.setdefault("language", None)
-            result.setdefault("confidence", None)
+            result["confidence"] = confidence  # Use calculated confidence
             result.setdefault("segments", [])
             result.setdefault("speaker_segments", [])
+            # Default to 1 speaker if not diarized but we have text
+            if "speaker_count" not in result and result.get("text"):
+                result["speaker_count"] = 1
             result.setdefault("speaker_count", None)
             result.setdefault("words", [])
             result.setdefault("processing_time_ms", 0)
@@ -210,6 +294,24 @@ class TranscriptionService:
         except Exception as e:
             logger.error(f"Transcription failed: {e}")
             raise
+
+    async def transcribe(
+        self,
+        audio_path: str,
+        options: Optional[Dict] = None
+    ) -> Dict:
+        """Async wrapper for backward compatibility."""
+        loop = asyncio.get_event_loop()
+        return await loop.run_in_executor(
+            None,
+            self.transcribe_sync,
+            audio_path,
+            options
+        )
+
+    async def shutdown(self):
+        """Async shutdown method for service cleanup."""
+        self.cleanup()
 
     def cleanup(self):
         """Clean up models and free memory."""

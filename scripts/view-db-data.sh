@@ -79,7 +79,7 @@ while [[ $# -gt 0 ]]; do
             echo ""
             echo "Options:"
             echo "  -l, --limit NUM       Number of records to show (default: 20)"
-            echo "  -t, --type TYPE       View type: all, summary, recent, stats, raw (default: all)"
+            echo "  -t, --type TYPE       View type: all, summary, recent, stats, raw, transcriptions, speakers (default: all)"
             echo "  -s, --system ID       Filter by system ID"
             echo "  -g, --talkgroup ID    Filter by talkgroup ID"
             echo "  -d, --date DATE       Date filter: TODAY, YESTERDAY, WEEK, ALL (default: TODAY)"
@@ -90,6 +90,7 @@ while [[ $# -gt 0 ]]; do
             echo "  $0 -t raw -l 50       # Show 50 raw records"
             echo "  $0 -t stats           # Show only statistics"
             echo "  $0 -s 123 -g 41001    # Filter by system and talkgroup"
+            echo "  $0 -t transcriptions  # Show transcription texts"
             exit 0
             ;;
         *)
@@ -150,7 +151,9 @@ if [[ "$VIEW_TYPE" == "all" ]] || [[ "$VIEW_TYPE" == "summary" ]]; then
         TO_CHAR(MAX(call_timestamp), 'YYYY-MM-DD HH24:MI:SS') as latest,
         COUNT(CASE WHEN transcription_status = 'completed' THEN 1 END) as transcribed,
         COUNT(CASE WHEN transcription_status = 'pending' THEN 1 END) as pending,
-        COUNT(CASE WHEN transcription_status = 'failed' THEN 1 END) as failed
+        COUNT(CASE WHEN transcription_status = 'failed' THEN 1 END) as failed,
+        COUNT(CASE WHEN speaker_count > 1 THEN 1 END) as multi_speaker,
+        ROUND(AVG(CASE WHEN speaker_count IS NOT NULL THEN speaker_count END), 2) as avg_speakers
     FROM radio_calls
     $DATE_WHERE;" \
     "📊 SUMMARY STATISTICS"
@@ -203,6 +206,67 @@ if [[ "$VIEW_TYPE" == "raw" ]]; then
     ORDER BY call_timestamp DESC
     LIMIT $LIMIT;" \
     "🗄️ RAW DATA DUMP (Last $LIMIT records)"
+fi
+
+# Show transcriptions
+if [[ "$VIEW_TYPE" == "transcriptions" ]]; then
+    run_query "
+    SELECT
+        TO_CHAR(call_timestamp, 'YYYY-MM-DD HH24:MI:SS') as timestamp,
+        system_id,
+        talkgroup_id,
+        SUBSTRING(talkgroup_label, 1, 20) as talkgroup,
+        COALESCE(duration_seconds::text, '-') as duration,
+        COALESCE(speaker_count::text, '1') as speakers,
+        CASE
+            WHEN speaker_count > 1 THEN '🎙️'
+            ELSE '👤'
+        END as type,
+        transcription_text
+    FROM radio_calls
+    WHERE transcription_text IS NOT NULL
+        AND transcription_text != ''
+        $(if [ -n "$DATE_WHERE" ]; then echo "AND (${DATE_WHERE#WHERE})"; fi)
+    ORDER BY call_timestamp DESC
+    LIMIT $LIMIT;" \
+    "📝 TRANSCRIPTIONS (Last $LIMIT)"
+fi
+
+# Show speaker statistics
+if [[ "$VIEW_TYPE" == "speakers" ]]; then
+    run_query "
+    SELECT
+        speaker_count,
+        COUNT(*) as calls,
+        ROUND(COUNT(*) * 100.0 / SUM(COUNT(*)) OVER(), 2) as percentage,
+        COUNT(DISTINCT talkgroup_id) as unique_talkgroups,
+        ROUND(AVG(duration_seconds), 1) as avg_duration
+    FROM radio_calls
+    WHERE transcription_status = 'completed'
+        AND transcription_text IS NOT NULL
+        AND transcription_text != ''
+        $(if [ -n "$DATE_WHERE" ]; then echo "AND (${DATE_WHERE#WHERE})"; fi)
+    GROUP BY speaker_count
+    ORDER BY speaker_count NULLS FIRST;" \
+    "🎙️ SPEAKER DISTRIBUTION"
+
+    # Show multi-speaker examples
+    run_query "
+    SELECT
+        TO_CHAR(call_timestamp, 'MM-DD HH24:MI') as time,
+        system_id,
+        talkgroup_id,
+        SUBSTRING(talkgroup_label, 1, 15) as talkgroup,
+        speaker_count as spkrs,
+        COALESCE(duration_seconds::text, '-') as dur,
+        SUBSTRING(transcription_text, 1, 80) as sample_text
+    FROM radio_calls
+    WHERE speaker_count > 1
+        AND transcription_text IS NOT NULL
+        $(if [ -n "$DATE_WHERE" ]; then echo "AND (${DATE_WHERE#WHERE})"; fi)
+    ORDER BY call_timestamp DESC
+    LIMIT 10;" \
+    "🗣️ RECENT MULTI-SPEAKER CALLS"
 fi
 
 # Show hourly distribution

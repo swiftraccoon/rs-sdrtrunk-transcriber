@@ -35,6 +35,11 @@ pub fn api_routes() -> Router<Arc<AppState>> {
             get(handlers::stats::get_system_stats),
         )
         .route("/api/stats/global", get(handlers::stats::get_global_stats))
+        // Transcription webhook endpoint
+        .route(
+            "/api/v1/transcription/callback",
+            post(handlers::transcription::transcription_callback),
+        )
         // Apply basic middleware
         .layer(CompressionLayer::new())
 }

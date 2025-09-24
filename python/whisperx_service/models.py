@@ -20,14 +20,54 @@ class TranscriptionStatus(str, Enum):
 
 class TranscriptionOptions(BaseModel):
     """Options for transcription processing."""
+    # Basic options
     language: Optional[str] = None
-    diarize: bool = True
+    max_duration: Optional[float] = 3600.0
+    return_confidence: bool = True
+
+    # Core decoding parameters
+    beam_size: int = 5
+    best_of: int = 5
+    patience: float = 1.0
+    length_penalty: float = 1.0
+    repetition_penalty: float = 1.0
+    no_repeat_ngram_size: int = 0
+
+    # Temperature and fallback
+    temperature: float = 0.0
+    temperature_increment_on_fallback: float = 0.2
+    prompt_reset_on_temperature: float = 0.5
+
+    # Threshold parameters
+    compression_ratio_threshold: float = 2.4
+    logprob_threshold: float = -1.0
+    no_speech_threshold: float = 0.6
+    hallucination_silence_threshold: Optional[float] = None
+
+    # Prompt and context
+    initial_prompt: Optional[str] = None
+    prefix: Optional[str] = None
+    condition_on_previous_text: bool = False
+    hotwords: Optional[str] = None
+
+    # Token control
+    suppress_tokens: str = "-1"
+    suppress_blank: bool = True
+    suppress_numerals: bool = False
+    without_timestamps: bool = True
+    max_initial_timestamp: float = 0.0
+
+    # VAD settings
+    vad: bool = True
+    vad_onset: float = 0.5
+    vad_offset: float = 0.363
+    chunk_length: int = 30
+
+    # Diarization settings
+    diarize: bool = False
     min_speakers: Optional[int] = None
     max_speakers: Optional[int] = None
-    vad: bool = True
     word_timestamps: bool = True
-    return_confidence: bool = True
-    max_duration: Optional[float] = 3600.0
 
 
 class TranscriptionRequest(BaseModel):
@@ -39,6 +79,7 @@ class TranscriptionRequest(BaseModel):
     options: TranscriptionOptions = Field(default_factory=TranscriptionOptions)
     retry_count: int = 0
     priority: int = 0
+    callback_url: Optional[str] = None  # URL to POST results when complete
 
 
 class WordSegment(BaseModel):

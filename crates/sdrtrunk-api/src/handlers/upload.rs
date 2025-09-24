@@ -559,27 +559,30 @@ pub async fn handle_call_upload(
                     std::path::PathBuf::from(&file_path),
                 );
 
-                // Submit to transcription service (fire and forget)
-                let pool_clone = transcription_pool.clone();
-                let db_pool = state.pool.clone();
-                tokio::spawn(async move {
-                    match pool_clone.submit(transcription_request).await {
-                        Ok(()) => {
-                            info!("Transcription request submitted for call {}", call_id);
-                        }
-                        Err(e) => {
-                            error!("Failed to submit transcription for call {}: {}", call_id, e);
-                            // Update database to mark transcription as failed
+                // Submit to transcription service using non-blocking try_submit
+                // Log queue status for monitoring
+                let queue_len = transcription_pool.queue_len();
+                let queue_capacity = transcription_pool.queue_capacity().unwrap_or(0);
+
+                match transcription_pool.try_submit(transcription_request) {
+                    Ok(()) => {
+                        info!("Transcription request submitted for call {} (queue: {}/{})", call_id, queue_len + 1, queue_capacity);
+                    }
+                    Err(e) => {
+                        error!("Failed to submit transcription for call {} (queue full: {}/{}): {}", call_id, queue_len, queue_capacity, e);
+                        // Update database to mark transcription as failed due to queue full
+                        let db_pool = state.pool.clone();
+                        tokio::spawn(async move {
                             if let Err(db_err) = sdrtrunk_database::update_transcription_status(
                                 &db_pool,
                                 call_id,
                                 "failed",
                             ).await {
-                                error!("Failed to update transcription status: {}", db_err);
+                                error!("Failed to update transcription status for call {}: {}", call_id, db_err);
                             }
-                        }
+                        });
                     }
-                });
+                }
             } else {
                 warn!("Transcription enabled but no worker pool initialized");
             }

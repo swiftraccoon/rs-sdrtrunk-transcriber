@@ -32,11 +32,65 @@ temp_dir = "/tmp/sdrtrunk/temp"
 enabled = true
 service = "whisperx"
 service_port = 8002
-model_size = "base"
+model_size = "large-v3"
 device = "cpu"
 compute_type = "int8"
 batch_size = 8
 workers = 2
-queue_size = 10
+queue_size = 500
 timeout_seconds = 300
 language = "en"
+hf_token = "YOUR_HF_TOKEN_HERE"
+
+# Core decoding parameters
+beam_size = 10                           # Number of beams in beam search (when temperature=0)
+best_of = 10                            # Number of candidates when sampling with non-zero temperature
+patience = 10                          # Beam decoding patience factor
+length_penalty = 1.0                   # Token length penalty coefficient (alpha)
+repetition_penalty = 2.1               # Penalty for repeated tokens
+no_repeat_ngram_size = 0               # Size of n-grams to avoid repeating
+
+# Temperature and fallback
+temperature = 0.01                      # Sampling temperature (0 = greedy decoding)
+temperature_increment_on_fallback = 0.015 # Temperature increment when decoding fails (0.01->0.03->0.05->0.07->0.09)
+prompt_reset_on_temperature = 0.02     # Temperature threshold to reset prompt
+
+# Threshold parameters
+compression_ratio_threshold = 2.4     # Max gzip compression ratio (detect hallucination)
+logprob_threshold = -1.0              # Min average log probability
+no_speech_threshold = 0.7             # Silence detection threshold
+hallucination_silence_threshold = 0.0 # Optional: detect hallucinated speech in silence (0 = disabled)
+
+# Prompt and context
+initial_prompt = ""                   # Optional text prompt for first window
+prefix = ""                           # Optional text prefix for each segment
+condition_on_previous_text = false   # Use previous output as prompt for next window
+hotwords = ""                        # Comma-separated list of words to prioritize
+
+# Token control
+suppress_tokens = "-1"               # Comma-separated token IDs to suppress (-1 = default)
+suppress_blank = true                # Suppress blank outputs
+suppress_numerals = false            # Suppress numeric symbols and currency
+without_timestamps = false            # Disable timestamp generation (faster)
+max_initial_timestamp = 0.0         # Max timestamp for first token
+
+# VAD and alignment
+vad_onset = 0.42                     # Voice activity detection onset threshold (matches faster-whisper threshold)
+vad_offset = 0.363                   # Voice activity detection offset threshold
+chunk_length = 60                    # Audio chunk length in seconds
+
+# Additional VAD parameters (faster-whisper compatible - may not be used by WhisperX)
+min_speech_duration_ms = 0           # Minimum speech duration in ms
+max_speech_duration_s = 999999.0     # Maximum speech duration in seconds
+min_silence_duration_ms = 250        # Minimum silence duration in ms
+speech_pad_ms = 800                  # Speech padding in ms
+
+# Diarization
+diarization = true
+min_speakers = 1
+max_speakers = 10
+word_timestamps = true
+
+# Punctuation handling (faster-whisper compatible)
+prepend_punctuations = "\"'([{-"          # Punctuation marks to prepend to words
+append_punctuations = "\"'.,!?:)]}"       # Punctuation marks to append to words

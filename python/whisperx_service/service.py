@@ -6,10 +6,11 @@ import time
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Dict
+from typing import Dict, Optional
 from uuid import UUID
 
-from fastapi import FastAPI, HTTPException, BackgroundTasks
+import httpx
+from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from pydantic import ValidationError
@@ -43,10 +44,117 @@ active_requests: Dict[UUID, TranscriptionStatus] = {}
 service_stats = ServiceStats()
 service_start_time = time.time()
 
+# Job queue for async processing
+job_queue: asyncio.Queue = asyncio.Queue(maxsize=1000)
+job_results: Dict[UUID, Optional[TranscriptionResponse]] = {}
+processing_task = None
+
+# HTTP client for callbacks
+callback_client = httpx.AsyncClient(timeout=30.0)
+
+
+async def send_webhook_callback(callback_url: str, response: TranscriptionResponse):
+    """Send transcription result to webhook callback URL."""
+    try:
+        logger.info(f"Sending webhook callback to {callback_url} for request {response.request_id}")
+
+        # Convert response to dict for JSON serialization
+        payload = response.model_dump(mode='json')
+
+        # Send POST request with transcription result
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            result = await client.post(callback_url, json=payload)
+
+            if result.status_code == 200:
+                logger.info(f"Webhook callback successful for request {response.request_id}")
+            else:
+                logger.warning(f"Webhook callback returned status {result.status_code} for request {response.request_id}")
+
+    except Exception as e:
+        logger.error(f"Failed to send webhook callback for request {response.request_id}: {e}")
+
+
+async def process_queue_worker():
+    """Background worker that processes transcription queue one at a time."""
+    logger.info("Queue worker started")
+
+    while True:
+        try:
+            # Get next request from queue
+            request = await job_queue.get()
+
+            # Track processing time from the beginning (before any operations that might fail)
+            start_time = time.time()
+
+            # Update status
+            active_requests[request.id] = TranscriptionStatus.PROCESSING
+            logger.info(f"Processing request {request.id}")
+
+            try:
+                # Run transcription (synchronously, one at a time)
+                result = transcription_service.transcribe_sync(
+                    str(request.audio_path),
+                    request.options.model_dump() if request.options else {}
+                )
+                # Calculate actual processing time in milliseconds
+                processing_time_ms = int((time.time() - start_time) * 1000)
+
+                # Create response
+                response = TranscriptionResponse(
+                    request_id=request.id,
+                    call_id=request.call_id,
+                    status=TranscriptionStatus.COMPLETED,
+                    text=result.get("text"),
+                    language=result.get("language"),
+                    confidence=result.get("confidence"),
+                    processing_time_ms=processing_time_ms,  # Use our calculated time
+                    segments=result.get("segments", []),
+                    speaker_segments=result.get("speaker_segments", []),
+                    speaker_count=result.get("speaker_count"),
+                    words=result.get("words", []),
+                    completed_at=datetime.now(timezone.utc),
+                )
+
+                # Store result
+                job_results[request.id] = response
+                active_requests[request.id] = TranscriptionStatus.COMPLETED
+                service_stats.successful += 1
+
+                logger.info(f"Request {request.id} completed in {processing_time_ms:.2f}ms")
+
+                # Send webhook callback if URL provided
+                if request.callback_url:
+                    await send_webhook_callback(request.callback_url, response)
+
+            except Exception as e:
+                logger.error(f"Request {request.id} failed: {e}")
+                active_requests[request.id] = TranscriptionStatus.FAILED
+                job_results[request.id] = TranscriptionResponse(
+                    request_id=request.id,
+                    call_id=request.call_id,
+                    status=TranscriptionStatus.FAILED,
+                    error=str(e),
+                    processing_time_ms=int((time.time() - start_time) * 1000),
+                    completed_at=datetime.now(timezone.utc),
+                )
+                service_stats.failed += 1
+
+                # Send failure webhook callback if URL provided
+                if request.callback_url:
+                    await send_webhook_callback(request.callback_url, job_results[request.id])
+
+        except asyncio.CancelledError:
+            logger.info("Queue worker cancelled")
+            break
+        except Exception as e:
+            logger.error(f"Queue worker error: {e}")
+            await asyncio.sleep(1)  # Brief pause before retrying
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Application lifespan handler."""
+    global processing_task
+
     logger.info("Starting WhisperX service")
 
     # Initialize transcription service
@@ -59,10 +167,18 @@ async def lifespan(app: FastAPI):
     # Create temp directory
     config.temp_dir.mkdir(parents=True, exist_ok=True)
 
+    # Start background queue processor
+    processing_task = asyncio.create_task(process_queue_worker())
+    logger.info("Background queue processor started")
+
     yield
 
     # Cleanup
     logger.info("Shutting down WhisperX service")
+    if processing_task:
+        processing_task.cancel()
+        await asyncio.gather(processing_task, return_exceptions=True)
+
     await transcription_service.shutdown()
 
 
@@ -133,9 +249,9 @@ async def get_stats():
     return service_stats
 
 
-@app.post("/transcribe", response_model=TranscriptionResponse)
-async def transcribe(request: TranscriptionRequest, background_tasks: BackgroundTasks):
-    """Process a transcription request."""
+@app.post("/transcribe", status_code=202)
+async def transcribe(request: TranscriptionRequest):
+    """Accept a transcription request and queue for processing."""
     # Check if file exists
     if not request.audio_path.exists():
         raise HTTPException(
@@ -144,93 +260,33 @@ async def transcribe(request: TranscriptionRequest, background_tasks: Background
         )
 
     # Check queue size
-    if len(active_requests) >= config.max_queue_size:
+    if job_queue.full():
         raise HTTPException(
             status_code=503,
             detail="Service queue is full",
         )
 
-    # Track request
-    active_requests[request.id] = TranscriptionStatus.PROCESSING
-    service_stats.total_requests += 1
-
+    # Add to queue
     try:
-        # Run transcription
-        start_time = time.time()
+        await job_queue.put(request)
+        active_requests[request.id] = TranscriptionStatus.PENDING
+        service_stats.total_requests += 1
 
-        result = await asyncio.wait_for(
-            transcription_service.transcribe(
-                request.audio_path,
-                request.options.model_dump() if request.options else {},
-            ),
-            timeout=config.request_timeout,
-        )
+        logger.info(f"Request {request.id} accepted and queued (queue depth: {job_queue.qsize()})")
 
-        # Update stats
-        service_stats.successful += 1
-        processing_time = (time.time() - start_time) * 1000
-
-        # Update average processing time
-        if service_stats.successful == 1:
-            service_stats.avg_processing_time_ms = processing_time
-        else:
-            service_stats.avg_processing_time_ms = (
-                service_stats.avg_processing_time_ms * (service_stats.successful - 1)
-                + processing_time
-            ) / service_stats.successful
-
-        # Log the transcription text
-        transcription_text = result.get("text", "")
-        if transcription_text:
-            logger.info(f"Transcription: {transcription_text[:200]}{'...' if len(transcription_text) > 200 else ''}")
-        else:
-            logger.info("Transcription: (empty/no speech detected)")
-
-        # Create response
-        response = TranscriptionResponse(
-            request_id=request.id,
-            call_id=request.call_id,
-            status=TranscriptionStatus.COMPLETED,
-            text=result["text"],
-            language=result["language"],
-            confidence=result["confidence"],
-            processing_time_ms=result["processing_time_ms"],
-            segments=result["segments"],
-            speaker_segments=result["speaker_segments"],
-            speaker_count=result["speaker_count"],
-            words=result["words"],
-            completed_at=datetime.now(timezone.utc),
-        )
-
-        active_requests[request.id] = TranscriptionStatus.COMPLETED
-        return response
-
-    except asyncio.TimeoutError:
-        service_stats.failed += 1
-        active_requests[request.id] = TranscriptionStatus.FAILED
-
-        raise HTTPException(
-            status_code=504,
-            detail=f"Transcription timeout after {config.request_timeout} seconds",
-        )
-
+        # Return immediately with accepted status
+        return {
+            "status": "accepted",
+            "request_id": str(request.id),
+            "call_id": str(request.call_id),
+            "queue_position": job_queue.qsize()
+        }
     except Exception as e:
-        logger.error(f"Transcription failed: {e}")
-        service_stats.failed += 1
-        active_requests[request.id] = TranscriptionStatus.FAILED
-
-        return TranscriptionResponse(
-            request_id=request.id,
-            call_id=request.call_id,
-            status=TranscriptionStatus.FAILED,
-            error=str(e),
-            processing_time_ms=int((time.time() - start_time) * 1000),
-            completed_at=datetime.now(timezone.utc),
+        logger.error(f"Failed to queue request: {e}")
+        raise HTTPException(
+            status_code=500,
+            detail="Failed to queue request"
         )
-
-    finally:
-        # Clean up old requests
-        background_tasks.add_task(cleanup_old_requests)
 
 
 @app.get("/status/{request_id}")
@@ -244,6 +300,40 @@ async def get_status(request_id: UUID):
         )
 
     return {"request_id": request_id, "status": status}
+
+
+@app.get("/result/{request_id}", response_model=TranscriptionResponse)
+async def get_result(request_id: UUID):
+    """Get the result of a completed transcription."""
+    # Check if request exists
+    if request_id not in active_requests:
+        raise HTTPException(
+            status_code=404,
+            detail="Request not found",
+        )
+
+    # Check if completed
+    status = active_requests.get(request_id)
+    if status == TranscriptionStatus.PENDING:
+        raise HTTPException(
+            status_code=202,
+            detail="Request is still pending in queue"
+        )
+    elif status == TranscriptionStatus.PROCESSING:
+        raise HTTPException(
+            status_code=202,
+            detail="Request is currently being processed"
+        )
+
+    # Get result
+    result = job_results.get(request_id)
+    if result is None:
+        raise HTTPException(
+            status_code=404,
+            detail="Result not found (may have been cleaned up)"
+        )
+
+    return result
 
 
 @app.delete("/cancel/{request_id}")

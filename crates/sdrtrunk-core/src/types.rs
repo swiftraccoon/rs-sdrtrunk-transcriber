@@ -2,6 +2,7 @@
 
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
+use std::path::PathBuf;
 use uuid::Uuid;
 use validator::Validate;
 
@@ -15,7 +16,7 @@ pub type TalkgroupId = i32;
 pub type RadioId = i32;
 
 /// Transcription status enumeration
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
 pub enum TranscriptionStatus {
     /// Pending transcription
@@ -26,13 +27,15 @@ pub enum TranscriptionStatus {
     Completed,
     /// Transcription failed
     Failed,
+    /// Transcription cancelled
+    Cancelled,
     /// No transcription requested
     None,
 }
 
 impl Default for TranscriptionStatus {
     fn default() -> Self {
-        Self::None
+        Self::Pending
     }
 }
 
@@ -43,9 +46,58 @@ impl std::fmt::Display for TranscriptionStatus {
             Self::Processing => write!(f, "processing"),
             Self::Completed => write!(f, "completed"),
             Self::Failed => write!(f, "failed"),
+            Self::Cancelled => write!(f, "cancelled"),
             Self::None => write!(f, "none"),
         }
     }
+}
+
+/// Transcription service configuration
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TranscriptionConfig {
+    /// Enable transcription service
+    pub enabled: bool,
+
+    /// Service backend ("whisperx", "mock")
+    pub service: String,
+
+    /// Number of worker threads
+    pub workers: usize,
+
+    /// Queue size limit
+    pub queue_size: usize,
+
+    /// Processing timeout in seconds
+    pub timeout_seconds: u64,
+
+    /// Python service path (for WhisperX)
+    pub python_path: Option<PathBuf>,
+
+    /// Service port (for HTTP-based services)
+    pub service_port: Option<u16>,
+
+    /// Maximum retries for failed transcriptions
+    #[serde(default = "default_max_retries")]
+    pub max_retries: u32,
+}
+
+impl Default for TranscriptionConfig {
+    fn default() -> Self {
+        Self {
+            enabled: true,
+            service: "whisperx".to_string(),
+            workers: 2,
+            queue_size: 100,
+            timeout_seconds: 300,
+            python_path: None,
+            service_port: None, // Must be configured in config.toml
+            max_retries: default_max_retries(),
+        }
+    }
+}
+
+const fn default_max_retries() -> u32 {
+    3
 }
 
 /// Represents a radio call from `SDRTrunk`
@@ -463,7 +515,7 @@ mod tests {
 
     #[test]
     fn test_transcription_status_default() {
-        assert_eq!(TranscriptionStatus::default(), TranscriptionStatus::None);
+        assert_eq!(TranscriptionStatus::default(), TranscriptionStatus::Pending);
     }
 
     #[test]
@@ -472,6 +524,7 @@ mod tests {
         assert_eq!(format!("{}", TranscriptionStatus::Processing), "processing");
         assert_eq!(format!("{}", TranscriptionStatus::Completed), "completed");
         assert_eq!(format!("{}", TranscriptionStatus::Failed), "failed");
+        assert_eq!(format!("{}", TranscriptionStatus::Cancelled), "cancelled");
         assert_eq!(format!("{}", TranscriptionStatus::None), "none");
     }
 
@@ -489,7 +542,7 @@ mod tests {
     fn test_radio_call_default() {
         let call = RadioCall::default();
         assert_eq!(call.system_id, "");
-        assert_eq!(call.transcription_status, TranscriptionStatus::None);
+        assert_eq!(call.transcription_status, TranscriptionStatus::Pending);
         assert!(call.id.is_none());
         assert!(call.system_label.is_none());
     }
@@ -818,6 +871,7 @@ mod tests {
             Just(TranscriptionStatus::Processing),
             Just(TranscriptionStatus::Completed),
             Just(TranscriptionStatus::Failed),
+            Just(TranscriptionStatus::Cancelled),
         ]) {
             let serialized = serde_json::to_string(&status).unwrap();
             let deserialized: TranscriptionStatus = serde_json::from_str(&serialized).unwrap();

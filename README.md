@@ -9,7 +9,8 @@ A Rust application for transcribing SDRTrunk P25 radio recordings with advanced 
 ## Features
 
 - **Dual Input Methods**: Process MP3 files from directories or receive via Rdio-compatible API
-- **Advanced Transcription**: WhisperX integration with speaker diarization
+- **Advanced Transcription**: WhisperX integration with speaker diarization and webhook callbacks
+- **High-Throughput Processing**: Queue-based transcription with webhook callbacks for scalability
 - **Live Streaming**: Icecast integration for real-time audio streaming
 - **Multi-Interface**: Web UI (Leptos), Native Desktop (Tauri), REST API
 - **High Performance**: Async Rust with Tokio, sub-100ms API response times
@@ -36,6 +37,8 @@ This project maintains strict quality standards:
 - Rust 1.89.0
 - PostgreSQL 15+
 - FFmpeg
+- Python 3.10+ (for WhisperX service)
+- uv or pip (Python package manager)
 - Docker (optional, for containerized deployment)
 
 ### Installation
@@ -49,6 +52,11 @@ cd rs-sdrtrunk-transcriber
 cargo install just
 cargo install cargo-nextest
 cargo install cargo-llvm-cov
+
+# Install Python dependencies for WhisperX service
+cd python/whisperx_service
+uv venv && uv pip install -r requirements.txt
+cd ../..
 
 # Run initial setup
 just setup
@@ -71,7 +79,8 @@ cp config.example.toml config.toml
 Key configuration options:
 
 - Database connection settings
-- WhisperX service URL
+- WhisperX service URL and webhook endpoints
+- Transcription worker pool settings
 - Icecast streaming configuration
 - API authentication keys
 
@@ -80,14 +89,17 @@ Key configuration options:
 ```
 rs-sdrtrunk-transcriber/
 ├── crates/
-│   ├── sdrtrunk-core/     # Core functionality
-│   ├── sdrtrunk-api/      # REST API server
-│   ├── sdrtrunk-cli/      # CLI interface
-│   ├── sdrtrunk-web/      # Web UI (Leptos)
-│   └── sdrtrunk-desktop/  # Desktop app (Tauri)
-├── tests/                 # Integration tests
-├── benches/              # Performance benchmarks
-└── docs/                 # Documentation
+│   ├── sdrtrunk-core/        # Core functionality
+│   ├── sdrtrunk-api/         # REST API server
+│   ├── sdrtrunk-transcriber/ # Transcription service integration
+│   ├── sdrtrunk-cli/         # CLI interface
+│   ├── sdrtrunk-web/         # Web UI (Leptos)
+│   └── sdrtrunk-desktop/     # Desktop app (Tauri)
+├── python/
+│   └── whisperx_service/     # WhisperX Python service
+├── tests/                    # Integration tests
+├── benches/                 # Performance benchmarks
+└── docs/                    # Documentation
 ```
 
 ## Development
@@ -148,6 +160,7 @@ Key endpoints:
 - `POST /api/call-upload` - Receive audio files from SDRTrunk
 - `GET /api/calls` - List calls with filtering
 - `GET /api/calls/{id}/transcription` - Get transcription with speaker diarization
+- `POST /api/v1/transcription/callback` - Webhook for transcription completions
 - `WebSocket /api/stream/{system_id}` - Live audio streaming
 
 Full API documentation available at `/api/docs` when running.

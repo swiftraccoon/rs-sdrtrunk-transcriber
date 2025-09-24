@@ -5,122 +5,8 @@ use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 use uuid::Uuid;
 
-/// Transcription status enumeration
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
-#[serde(rename_all = "snake_case")]
-pub enum TranscriptionStatus {
-    /// Pending transcription
-    Pending,
-    /// Currently being transcribed
-    Processing,
-    /// Transcription completed successfully
-    Completed,
-    /// Transcription failed
-    Failed,
-    /// Transcription cancelled
-    Cancelled,
-}
-
-impl Default for TranscriptionStatus {
-    fn default() -> Self {
-        Self::Pending
-    }
-}
-
-impl std::fmt::Display for TranscriptionStatus {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Self::Pending => write!(f, "pending"),
-            Self::Processing => write!(f, "processing"),
-            Self::Completed => write!(f, "completed"),
-            Self::Failed => write!(f, "failed"),
-            Self::Cancelled => write!(f, "cancelled"),
-        }
-    }
-}
-
-/// Transcription service configuration
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct TranscriptionConfig {
-    /// Enable transcription service
-    pub enabled: bool,
-
-    /// Service backend ("whisperx", "mock")
-    pub service: String,
-
-    /// Model size ("tiny", "base", "small", "medium", "large-v2", "large-v3")
-    pub model_size: String,
-
-    /// Compute device ("cuda", "cpu", "mps")
-    pub device: String,
-
-    /// Batch size for processing
-    pub batch_size: usize,
-
-    /// Compute type ("float16", "int8", "float32")
-    pub compute_type: String,
-
-    /// Language code (None for auto-detect)
-    pub language: Option<String>,
-
-    /// Minimum number of speakers for diarization
-    pub min_speakers: Option<usize>,
-
-    /// Maximum number of speakers for diarization
-    pub max_speakers: Option<usize>,
-
-    /// Number of worker threads
-    pub workers: usize,
-
-    /// Python service path (for WhisperX)
-    pub python_path: Option<PathBuf>,
-
-    /// Service port (for HTTP-based services)
-    pub service_port: Option<u16>,
-
-    /// Processing timeout in seconds
-    pub timeout_seconds: u64,
-
-    /// Maximum retries for failed transcriptions
-    pub max_retries: u32,
-
-    /// Queue size limit
-    pub queue_size: usize,
-
-    /// Enable VAD (Voice Activity Detection) preprocessing
-    pub enable_vad: bool,
-
-    /// Enable word-level timestamps
-    pub word_timestamps: bool,
-
-    /// Confidence threshold (0.0-1.0)
-    pub confidence_threshold: f32,
-}
-
-impl Default for TranscriptionConfig {
-    fn default() -> Self {
-        Self {
-            enabled: true,
-            service: "whisperx".to_string(),
-            model_size: "large-v3".to_string(),
-            device: "cpu".to_string(),
-            batch_size: 16,
-            compute_type: "float32".to_string(),
-            language: None,
-            min_speakers: Some(1),
-            max_speakers: Some(10),
-            workers: 2,
-            python_path: None,
-            service_port: None, // Must be configured in config.toml
-            timeout_seconds: 300,
-            max_retries: 3,
-            queue_size: 1000,
-            enable_vad: true,
-            word_timestamps: true,
-            confidence_threshold: 0.6,
-        }
-    }
-}
+// Re-export from core
+pub use sdrtrunk_core::{TranscriptionConfig, TranscriptionStatus};
 
 /// Transcription request
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -372,6 +258,7 @@ mod tests {
     fn test_transcription_status() {
         assert_eq!(TranscriptionStatus::default(), TranscriptionStatus::Pending);
         assert_eq!(format!("{}", TranscriptionStatus::Completed), "completed");
+        assert_eq!(format!("{}", TranscriptionStatus::Cancelled), "cancelled");
     }
 
     #[test]
@@ -409,9 +296,9 @@ mod tests {
         let config = TranscriptionConfig::default();
         assert!(config.enabled);
         assert_eq!(config.service, "whisperx");
-        assert_eq!(config.model_size, "large-v3");
-        assert_eq!(config.device, "cpu");
         assert_eq!(config.workers, 2);
+        assert_eq!(config.queue_size, 100);
+        assert_eq!(config.max_retries, 3);
     }
 
     #[test]

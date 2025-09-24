@@ -47,7 +47,8 @@ impl TranscriptionService for WhisperXService {
             requests.insert(request.id, TranscriptionStatus::Processing);
         }
 
-        // Build Python request
+        // Build Python request with callback URL
+        let callback_url = format!("http://localhost:8080/api/v1/transcription/callback");
         let py_request = PythonRequest {
             id: request.id,
             call_id: request.call_id,
@@ -65,17 +66,89 @@ impl TranscriptionService for WhisperXService {
             },
             retry_count: request.retry_count,
             priority: request.priority,
+            callback_url: Some(callback_url),
         };
 
-        // Send request to Python service
-        let response = self
-            .client
-            .post(&format!("{}/transcribe", self.service_url))
-            .json(&py_request)
-            .send()
-            .await
-            .map_err(|e| TranscriptionError::service_communication(format!("HTTP request failed: {}", e)))?;
+        // Send request to Python service with retry logic
+        let url = format!("{}/transcribe", self.service_url);
 
+        // Retry with exponential backoff: 1s, 2s, 4s
+        let mut retry_count = 0;
+        const MAX_RETRIES: u32 = 3;
+
+        let response = loop {
+            info!("Attempting to connect to WhisperX service at {} (attempt {}/{})",
+                url, retry_count + 1, MAX_RETRIES);
+
+            match self.client.post(&url).json(&py_request).send().await {
+                Ok(resp) => {
+                    info!("Successfully connected to WhisperX, awaiting response");
+                    break resp;
+                }
+                Err(e) => {
+                    retry_count += 1;
+
+                    if retry_count >= MAX_RETRIES {
+                        error!("Failed to connect to WhisperX service after {} attempts: {}",
+                            MAX_RETRIES, e);
+                        return Err(TranscriptionError::service_communication(
+                            format!("HTTP request failed after {} retries: {}", MAX_RETRIES, e)
+                        ));
+                    }
+
+                    // Exponential backoff: 1s, 2s, 4s
+                    let delay = Duration::from_secs(1 << (retry_count - 1));
+                    info!("Connection failed (attempt {}), retrying in {:?}: {}",
+                        retry_count, delay, e);
+                    sleep(delay).await;
+                }
+            }
+        };
+
+        // Check if we got 202 Accepted (webhook callback pattern)
+        if response.status() == 202 {
+            info!("Request accepted with callback URL, returning immediately");
+
+            // Parse the acceptance response
+            #[derive(Deserialize)]
+            struct AcceptResponse {
+                request_id: String,
+                status: String,
+            }
+
+            let accept_resp: AcceptResponse = response
+                .json()
+                .await
+                .map_err(|e| TranscriptionError::service_communication(format!("Failed to parse acceptance: {}", e)))?;
+
+            info!("Transcription request {} accepted by WhisperX with status: {}",
+                accept_resp.request_id, accept_resp.status);
+
+            // Update tracking to show it's processing
+            {
+                let mut requests = self.active_requests.write().await;
+                requests.insert(request.id, TranscriptionStatus::Processing);
+            }
+
+            // Return a processing response - the webhook will handle the actual result
+            return Ok(TranscriptionResponse {
+                request_id: request.id,
+                call_id: request.call_id,
+                status: TranscriptionStatus::Processing,
+                text: None,
+                language: None,
+                confidence: None,
+                processing_time_ms: 0,
+                segments: vec![],
+                speaker_segments: vec![],
+                speaker_count: None,
+                words: vec![],
+                error: None,
+                completed_at: Utc::now(),
+            });
+        }
+
+        // Old synchronous pattern (backward compatibility)
         if !response.status().is_success() {
             let status = response.status();
             let error_text = response.text().await.unwrap_or_else(|_| "Unknown error".to_string());
