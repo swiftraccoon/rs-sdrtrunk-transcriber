@@ -38,7 +38,6 @@ sqlx = { workspace = true }
 
 # Date/time
 chrono = { workspace = true }
-time = { workspace = true }
 
 # Utilities
 uuid = { workspace = true }
@@ -47,17 +46,11 @@ dashmap = { workspace = true }
 
 # Configuration
 config = { workspace = true }
-directories = { workspace = true }
 
 # CLI (for standalone binary)
 clap = { workspace = true }
 
-# Environment variables
-dotenvy = "0.15"
-
-# Async utilities
-async-recursion = "1.1"
-num_cpus = "1.16"
+# Async utilities - removed num_cpus and async-recursion
 
 [dev-dependencies]
 # Async runtime for tests
@@ -66,11 +59,11 @@ tokio = { workspace = true, features = ["test-util"] }
 # Test utilities
 tempfile = { workspace = true }
 similar-asserts = { workspace = true }
-pretty_assertions = "1.4"
-testcontainers = "0.23"
-testcontainers-modules = { version = "0.11", features = ["postgres"] }
+pretty_assertions = { workspace = true }
+testcontainers = { workspace = true }
+testcontainers-modules = { workspace = true }
 tokio-test = "0.4"
-futures = "0.3"
+futures = { workspace = true }
 
 # Benchmarking
 criterion = { workspace = true }

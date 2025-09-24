@@ -22,19 +22,19 @@ sdrtrunk-database = { path = "../sdrtrunk-database" }
 sdrtrunk-transcriber = { path = "../sdrtrunk-transcriber" }
 
 # Web framework
-axum = { version = "0.7", features = ["macros", "multipart", "ws"] }
-tower = { version = "0.5", features = ["full"] }
-tower-http = { version = "0.6", features = ["fs", "cors", "trace", "compression-gzip", "timeout", "limit"] }
+axum = { workspace = true }
+tower = { workspace = true }
+tower-http = { workspace = true }
 
 # Async runtime
-tokio = { version = "1.40", features = ["full"] }
+tokio = { workspace = true }
 
 # Serialization
-serde = { version = "1.0", features = ["derive"] }
-serde_json = "1.0"
+serde = { workspace = true }
+serde_json = { workspace = true }
 
 # Validation
-validator = { version = "0.19", features = ["derive"] }
+validator = { workspace = true }
 
 # OpenAPI documentation (commented out to reduce dependencies)
 # utoipa = { version = "4.2", features = ["axum_extras", "chrono", "uuid"] }
@@ -44,52 +44,45 @@ validator = { version = "0.19", features = ["derive"] }
 # prometheus = "0.13"
 
 # Date/time
-chrono = { version = "0.4", features = ["serde"] }
+chrono = { workspace = true }
 
 # Utilities
-uuid = { version = "1.11", features = ["v4", "serde"] }
+uuid = { workspace = true }
 
 # Logging
-tracing = "0.1"
+tracing = { workspace = true }
 
 # Error handling (uses sdrtrunk-core custom implementations)
 
-# Environment variables
-dotenvy = "0.15"
-
 # Rate limiting
-governor = "0.7"
+governor = { workspace = true }
 
-# URL encoding for query parameters
-serde_urlencoded = "0.7"
+# URL encoding removed - using manual parsing
 
 # Random number generation
-rand = "0.8"
-
-# Simple MD5 for API key hashing (in production, use a proper hash)
-md5 = "0.7"
+rand = { workspace = true }
 
 # HTTP status codes and utilities
-http = "1.0"
+http = { workspace = true }
 
 # Dashboard/map for in-memory storage
-dashmap = "6.1"
+dashmap = { workspace = true }
 
 # Direct access to sqlx types
-sqlx = { version = "0.8", features = ["runtime-tokio", "postgres", "uuid", "chrono", "migrate", "json", "ipnetwork", "rust_decimal"] }
-rust_decimal = { version = "1.36", features = ["serde", "db-postgres"] }
+sqlx = { workspace = true }
+rust_decimal = { workspace = true }
 
 [dev-dependencies]
 # HTTP client for testing
-reqwest = { version = "0.12", features = ["json", "multipart"] }
-tower = { version = "0.5", features = ["util"] }
-hyper = "1.5"
+reqwest = { workspace = true }
+tower = { workspace = true }
+hyper = { workspace = true }
 
 # Test utilities
-pretty_assertions = "1.4"
-tempfile = "3.13"
-testcontainers = "0.23"
-testcontainers-modules = { version = "0.11", features = ["postgres"] }
-futures = "0.3"
-validator = { version = "0.19", features = ["derive"] }
+pretty_assertions = { workspace = true }
+tempfile = { workspace = true }
+testcontainers = { workspace = true }
+testcontainers-modules = { workspace = true }
+futures = { workspace = true }
+validator = { workspace = true }
 tokio-test = "0.4"

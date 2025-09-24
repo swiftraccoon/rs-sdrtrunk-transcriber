@@ -398,51 +398,55 @@ impl FileMonitor {
     /// Returns [`MonitorError`] if:
     /// - Cannot read directory entries
     /// - I/O errors occur during file metadata access
-    #[async_recursion::async_recursion]
     async fn scan_directory(
         &self,
         directory: &Path,
         files: &mut Vec<PathBuf>,
-        depth: usize,
+        _depth: usize,  // Keep for API compatibility
     ) -> Result<()> {
-        const MAX_DEPTH: usize = 10; // Prevent infinite recursion
+        const MAX_DEPTH: usize = 10;
 
-        if depth > MAX_DEPTH {
-            warn!("Maximum directory depth reached: {}", directory.display());
-            return Ok(());
-        }
+        // Use iterative approach with stack instead of recursion
+        let mut dirs_to_scan = vec![(directory.to_path_buf(), 0usize)];
 
-        let mut entries = match tokio::fs::read_dir(directory).await {
-            Ok(entries) => entries,
-            Err(e) => {
-                warn!(
-                    directory = %directory.display(),
-                    error = %e,
-                    "Failed to read directory"
-                );
-                return Ok(()); // Continue with other directories
+        while let Some((dir, depth)) = dirs_to_scan.pop() {
+            if depth > MAX_DEPTH {
+                warn!("Maximum directory depth reached: {}", dir.display());
+                continue;
             }
-        };
 
-        while let Some(entry) = entries.next_entry().await? {
-            let path = entry.path();
+            let mut entries = match tokio::fs::read_dir(&dir).await {
+                Ok(entries) => entries,
+                Err(e) => {
+                    warn!(
+                        directory = %dir.display(),
+                        error = %e,
+                        "Failed to read directory"
+                    );
+                    continue; // Continue with other directories
+                }
+            };
 
-            if path.is_dir() && self.config.recursive {
-                self.scan_directory(&path, files, depth + 1).await?;
-            } else if path.is_file() {
-                // Check if file matches patterns
-                if Self::matches_patterns(
-                    &path,
-                    &self.config.file_patterns,
-                    &self.config.file_extensions,
-                ) {
-                    // Check file size
-                    if let Ok(metadata) = tokio::fs::metadata(&path).await {
-                        let file_size = metadata.len();
-                        if file_size >= self.config.min_file_size
-                            && file_size <= self.config.max_file_size
-                        {
-                            files.push(path);
+            while let Some(entry) = entries.next_entry().await? {
+                let path = entry.path();
+
+                if path.is_dir() && self.config.recursive {
+                    dirs_to_scan.push((path, depth + 1));
+                } else if path.is_file() {
+                    // Check if file matches patterns
+                    if Self::matches_patterns(
+                        &path,
+                        &self.config.file_patterns,
+                        &self.config.file_extensions,
+                    ) {
+                        // Check file size
+                        if let Ok(metadata) = tokio::fs::metadata(&path).await {
+                            let file_size = metadata.len();
+                            if file_size >= self.config.min_file_size
+                                && file_size <= self.config.max_file_size
+                            {
+                                files.push(path);
+                            }
                         }
                     }
                 }

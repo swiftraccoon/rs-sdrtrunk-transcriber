@@ -161,7 +161,9 @@ const fn default_port() -> u16 {
 }
 
 fn default_workers() -> usize {
-    num_cpus::get()
+    std::thread::available_parallelism()
+        .map(|n| n.get())
+        .unwrap_or(4)
 }
 
 const fn default_max_connections() -> u32 {

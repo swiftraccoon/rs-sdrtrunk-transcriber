@@ -4,6 +4,26 @@ use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 use std::time::Duration;
 
+/// Get the user's home directory from environment variables
+fn get_home_directory() -> Option<PathBuf> {
+    // Try HOME first (Unix-like systems)
+    if let Ok(home) = std::env::var("HOME") {
+        return Some(PathBuf::from(home));
+    }
+
+    // Try USERPROFILE for Windows
+    if let Ok(userprofile) = std::env::var("USERPROFILE") {
+        return Some(PathBuf::from(userprofile));
+    }
+
+    // Fallback to HOMEDRIVE + HOMEPATH on Windows
+    if let (Ok(homedrive), Ok(homepath)) = (std::env::var("HOMEDRIVE"), std::env::var("HOMEPATH")) {
+        return Some(PathBuf::from(format!("{}{}", homedrive, homepath)));
+    }
+
+    None
+}
+
 /// Main configuration for the file monitoring service
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct MonitorConfig {
@@ -223,7 +243,10 @@ const fn default_processing_interval() -> u64 {
 }
 
 fn default_processing_workers() -> usize {
-    num_cpus::get().max(2)
+    std::thread::available_parallelism()
+        .map(|n| n.get())
+        .unwrap_or(4)
+        .max(2)
 }
 
 const fn default_max_retry_attempts() -> u32 {
@@ -392,8 +415,7 @@ impl MonitorConfig {
 
 impl Default for MonitorConfig {
     fn default() -> Self {
-        let home_dir = directories::UserDirs::new()
-            .map_or_else(|| PathBuf::from("."), |dirs| dirs.home_dir().to_path_buf());
+        let home_dir = get_home_directory().unwrap_or_else(|| PathBuf::from("."));
 
         let data_dir = home_dir.join(".sdrtrunk-monitor");
 
@@ -473,7 +495,11 @@ mod tests {
         assert!(default_recursive());
         assert!(!default_follow_symlinks());
         assert_eq!(default_processing_interval(), 5);
-        assert_eq!(default_processing_workers(), num_cpus::get());
+        let expected = std::thread::available_parallelism()
+            .map(|n| n.get())
+            .unwrap_or(4)
+            .max(2);
+        assert_eq!(default_processing_workers(), expected);
         assert_eq!(default_max_retry_attempts(), 3);
         assert_eq!(default_retry_delay(), 10);
         assert_eq!(default_processing_timeout(), 300);
@@ -564,7 +590,11 @@ mod tests {
         assert!(!config.watch.follow_symlinks);
 
         assert_eq!(config.processing.processing_interval_seconds, 5);
-        assert_eq!(config.processing.processing_workers, num_cpus::get());
+        let expected = std::thread::available_parallelism()
+            .map(|n| n.get())
+            .unwrap_or(4)
+            .max(2);
+        assert_eq!(config.processing.processing_workers, expected);
         assert_eq!(config.processing.max_retry_attempts, 3);
         assert_eq!(config.processing.retry_delay_seconds, 10);
         assert_eq!(config.processing.processing_timeout_seconds, 300);
@@ -855,7 +885,11 @@ mod tests {
         // Verify defaults were applied
         assert_eq!(config.watch.file_patterns, vec!["*.mp3"]);
         assert_eq!(config.watch.file_extensions, vec!["mp3"]);
-        assert_eq!(config.processing.processing_workers, num_cpus::get());
+        let expected = std::thread::available_parallelism()
+            .map(|n| n.get())
+            .unwrap_or(4)
+            .max(2);
+        assert_eq!(config.processing.processing_workers, expected);
         assert_eq!(config.queue.max_queue_size, 10000);
         assert_eq!(config.service.name, "sdrtrunk-monitor");
     }

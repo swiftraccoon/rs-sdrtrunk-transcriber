@@ -50,7 +50,6 @@ metrics = "0.23"
 # CLI and configuration
 clap = { version = "4.5", features = ["derive", "env", "wrap_help", "string"] }
 config = "0.14"
-directories = "5.0"
 
 # Performance and data structures
 indexmap = { version = "2.5", features = ["serde"] }
@@ -76,13 +75,15 @@ reqwest = { version = "0.12", features = ["json", "rustls-tls", "stream"] }
 hyper = { version = "1.4", features = ["full"] }
 tower = { version = "0.5", features = ["full"] }
 tower-http = { version = "0.6", features = ["full"] }
+axum = { version = "0.7", features = ["macros", "multipart", "ws"] }
+http = "1.1"
 
 # Database and storage
-sqlx = { version = "0.8", default-features = false, features = ["runtime-tokio-rustls", "postgres", "chrono", "uuid"] }
+sqlx = { version = "0.8", default-features = false, features = ["runtime-tokio-rustls", "postgres", "chrono", "uuid", "migrate", "json", "ipnetwork", "rust_decimal", "macros"] }
+rust_decimal = { version = "1.36", features = ["serde", "db-postgres"] }
 
 # Date and time
 chrono = { version = "0.4", features = ["serde", "clock"] }
-time = { version = "0.3", features = ["serde", "macros", "formatting", "parsing"] }
 
 # Audio and signal processing
 hound = "3.5"  # WAV file I/O
@@ -118,6 +119,9 @@ wiremock = "0.6"
 # System integration
 nix = { version = "0.29", features = ["signal", "process", "fs"] }
 libc = "0.2"
+async-channel = "2.3"
+validator = { version = "0.19", features = ["derive"] }
+governor = "0.7"
 
 # File system monitoring
 notify = { version = "6.1", features = ["macos_fsevent", "macos_kqueue"] }

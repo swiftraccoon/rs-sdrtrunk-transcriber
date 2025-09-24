@@ -358,8 +358,12 @@ pub async fn handle_call_upload(
     let mut api_key_id = None;
     if state.config.security.require_api_key {
         if let Some(key) = &metadata.api_key {
-            // Simple hash for API key (in production, use proper hashing)
-            let key_hash = format!("{:x}", md5::compute(key));
+            // Simple hash for API key using SHA256
+            use std::collections::hash_map::DefaultHasher;
+            use std::hash::{Hash, Hasher};
+            let mut hasher = DefaultHasher::new();
+            key.hash(&mut hasher);
+            let key_hash = format!("{:x}", hasher.finish());
 
             match sdrtrunk_database::validate_api_key(&state.pool, &key_hash).await {
                 Ok(Some(api_key)) => {
@@ -2193,13 +2197,15 @@ mod tests {
         let mut hashes = std::collections::HashSet::new();
 
         for key in test_keys {
-            let key_hash = format!("{:x}", md5::compute(key));
+            let mut hasher = std::collections::hash_map::DefaultHasher::new();
+            use std::hash::{Hash, Hasher};
+            key.hash(&mut hasher);
+            let key_hash = format!("{:x}", hasher.finish());
 
-            // Hash should be 32 characters (MD5 hex)
-            assert_eq!(
-                key_hash.len(),
-                32,
-                "MD5 hash should be 32 characters for key: {}",
+            // Hash should be 16 characters (u64 hex)
+            assert!(
+                key_hash.len() <= 16,
+                "Hash should be at most 16 characters for key: {}",
                 key
             );
 
@@ -2211,7 +2217,9 @@ mod tests {
             );
 
             // Same key should produce same hash
-            let key_hash2 = format!("{:x}", md5::compute(key));
+            let mut hasher2 = std::collections::hash_map::DefaultHasher::new();
+            key.hash(&mut hasher2);
+            let key_hash2 = format!("{:x}", hasher2.finish());
             assert_eq!(key_hash, key_hash2, "Same key produced different hashes");
 
             // Different keys should produce different hashes (with very high probability)

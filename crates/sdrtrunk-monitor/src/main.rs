@@ -175,12 +175,6 @@ pub enum QueueCommands {
 /// Panics if the tokio runtime cannot be initialized
 #[tokio::main]
 async fn main() -> Result<()> {
-    // Load .env file if it exists (for development convenience)
-    if let Err(e) = dotenvy::dotenv() {
-        // It's okay if .env doesn't exist
-        eprintln!("Note: .env file not loaded: {e}");
-    }
-
     let cli = Cli::parse();
 
     // Initialize logging

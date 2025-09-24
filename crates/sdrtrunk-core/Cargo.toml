@@ -13,30 +13,29 @@ categories = ["multimedia", "parsing"]
 
 [dependencies]
 # Serialization
-serde = { version = "1.0", features = ["derive"] }
-serde_json = "1.0"
+serde = { workspace = true }
+serde_json = { workspace = true }
 
 # Error handling (custom implementations)
 
 # Date/time
-chrono = { version = "0.4", features = ["serde"] }
+chrono = { workspace = true }
 
 # Logging
-tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
+tracing-subscriber = { workspace = true }
 
 # Configuration
-config = "0.14"
+config = { workspace = true }
 
 # Utilities
-uuid = { version = "1.11", features = ["v4", "serde"] }
-num_cpus = "1.16"
+uuid = { workspace = true }
 
 # Validation
-validator = { version = "0.19", features = ["derive"] }
+validator = { workspace = true }
 
 [dev-dependencies]
-tokio = { version = "1.40", features = ["rt", "macros"] }
-pretty_assertions = "1.4"
+tokio = { workspace = true }
+pretty_assertions = { workspace = true }
 tempfile = { workspace = true }
 proptest = { workspace = true }
 rstest = { workspace = true }

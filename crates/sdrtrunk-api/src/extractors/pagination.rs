@@ -105,18 +105,74 @@ where
             .uri
             .query()
             .unwrap_or_default();
-        
-        let pagination: Pagination = serde_urlencoded::from_str(query)
-            .map_err(|e| ExtractorError::bad_request(format!("Invalid pagination parameters: {}", e)))?;
-        
+
+        // Manual query string parsing
+        let mut page = None;
+        let mut limit = None;
+        let mut offset = None;
+
+        for pair in query.split('&') {
+            if pair.is_empty() {
+                continue;
+            }
+
+            let mut kv = pair.splitn(2, '=');
+            let key = kv.next().unwrap_or("");
+            let value = kv.next().unwrap_or("");
+
+            match key {
+                "page" => {
+                    page = value.parse::<u32>().ok();
+                    if page.is_none() && !value.is_empty() {
+                        return Err(ExtractorError::bad_request(
+                            format!("Invalid page value: {}", value)
+                        ));
+                    }
+                }
+                "limit" => {
+                    limit = value.parse::<u32>().ok();
+                    if limit.is_none() && !value.is_empty() {
+                        return Err(ExtractorError::bad_request(
+                            format!("Invalid limit value: {}", value)
+                        ));
+                    }
+                }
+                "offset" => {
+                    offset = value.parse::<u32>().ok();
+                    if offset.is_none() && !value.is_empty() {
+                        return Err(ExtractorError::bad_request(
+                            format!("Invalid offset value: {}", value)
+                        ));
+                    }
+                }
+                _ => {
+                    // Ignore unknown parameters
+                }
+            }
+        }
+
+        // Use defaults if not provided
+        if page.is_none() && offset.is_none() {
+            page = Some(1);
+        }
+        if limit.is_none() {
+            limit = Some(50);
+        }
+
+        let pagination = Pagination {
+            page,
+            limit,
+            offset,
+        };
+
         // Validate pagination parameters
         if let Err(validation_errors) = pagination.validate() {
             return Err(ExtractorError::bad_request(format!(
-                "Invalid pagination parameters: {:?}", 
+                "Invalid pagination parameters: {:?}",
                 validation_errors
             )));
         }
-        
+
         Ok(pagination)
     }
 }

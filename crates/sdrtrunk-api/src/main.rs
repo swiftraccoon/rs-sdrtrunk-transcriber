@@ -17,12 +17,6 @@ use tracing::{error, info};
 ///
 /// Returns error if logging initialization fails
 pub fn load_environment() -> Result<()> {
-    // Load .env file if it exists (for development convenience)
-    if let Err(e) = dotenvy::dotenv() {
-        // It's okay if .env doesn't exist, just log it at debug level
-        eprintln!("Note: .env file not loaded: {e}");
-    }
-
     // Initialize logging first
     init_logging()?;
     Ok(())
