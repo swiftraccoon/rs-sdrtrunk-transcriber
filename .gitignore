@@ -116,6 +116,7 @@ fuzz/target/
 .tarpaulin-includes
 
 # Local configuration
+config.toml
 config.local.toml
 settings.local.toml
 

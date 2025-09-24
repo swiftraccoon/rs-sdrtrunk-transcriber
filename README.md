@@ -70,19 +70,36 @@ just dev
 
 ### Configuration
 
-Copy the example configuration and adjust for your environment:
+1. Copy the example configuration:
 
 ```bash
 cp config.example.toml config.toml
 ```
 
-Key configuration options:
+2. Edit `config.toml` with your settings:
 
-- Database connection settings
-- WhisperX service URL and webhook endpoints
-- Transcription worker pool settings
-- Icecast streaming configuration
-- API authentication keys
+**Required Configuration:**
+
+- **Database URL**: Update PostgreSQL connection string
+  ```toml
+  [database]
+  url = "postgresql://username:password@localhost:5432/sdrtrunk_transcriber"
+  ```
+
+- **Hugging Face Token** (for speaker diarization):
+  ```toml
+  [transcription]
+  hf_token = "YOUR_HF_TOKEN_HERE"  # Get from https://huggingface.co/settings/tokens
+  ```
+
+**Optional Configuration:**
+
+- Storage directories (defaults to `/tmp/sdrtrunk`)
+- WhisperX model size and device settings
+- API authentication settings
+- Monitoring and logging levels
+
+See `config.example.toml` for all available options with detailed comments.
 
 ## Project Structure
 

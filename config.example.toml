@@ -1,0 +1,93 @@
+# SDRTrunk Transcriber Configuration
+# Copy this file to config.toml and update with your values
+
+[server]
+# Server binding configuration
+host = "0.0.0.0"
+port = 8080
+
+[database]
+# PostgreSQL connection string
+# Update with your database credentials
+url = "postgresql://username:password@localhost:5432/sdrtrunk_transcriber"
+max_connections = 50
+
+[storage]
+# Base directory for all file storage
+base_dir = "/tmp/sdrtrunk"
+upload_dir = "uploads"
+max_file_size = 104857600  # 100MB in bytes
+
+[api]
+# API authentication settings
+enable_auth = false
+
+[security]
+# Require API key for all requests
+require_api_key = false
+
+[logging]
+# Log level: trace, debug, info, warn, error
+level = "info"
+# Log format: json, compact, pretty, full
+format = "json"
+
+[monitor]
+# Directory monitoring configuration
+watch_dir = "/tmp/sdrtrunk/watch"     # Directory to watch for new files
+archive_dir = "/tmp/sdrtrunk/archive" # Successfully processed files
+failed_dir = "/tmp/sdrtrunk/failed"   # Failed processing files
+temp_dir = "/tmp/sdrtrunk/temp"       # Temporary processing directory
+
+[transcription]
+# Transcription service configuration
+enabled = true
+service = "whisperx"                  # Service type: whisperx, mock
+service_port = 8002                   # WhisperX service port
+model_size = "large-v3"               # Model size: tiny, base, small, medium, large, large-v2, large-v3
+device = "cpu"                        # Device: cpu, cuda, mps
+compute_type = "int8"                 # Compute type: int8, float16, float32
+batch_size = 8                        # Batch size for processing
+workers = 2                           # Number of worker threads
+queue_size = 500                      # Maximum queue size
+timeout_seconds = 300                 # Processing timeout in seconds
+language = "en"                       # Language code (e.g., en, es, fr)
+
+# IMPORTANT: Get your token from https://huggingface.co/settings/tokens
+# This token is required for speaker diarization models
+hf_token = "YOUR_HF_TOKEN_HERE"
+
+# Core decoding parameters (advanced - defaults are usually fine)
+beam_size = 10                        # Number of beams in beam search (when temperature=0)
+best_of = 10                          # Number of candidates when sampling with non-zero temperature
+patience = 10                         # Beam decoding patience factor
+length_penalty = 1.0                  # Token length penalty coefficient (alpha)
+repetition_penalty = 2.1              # Penalty for repeated tokens
+temperature = 0.0                     # Sampling temperature (0 = greedy, >0 = sampling)
+compression_ratio_threshold = 2.4     # Threshold for compression ratio heuristic
+log_prob_threshold = -1.0             # Average log probability threshold
+no_speech_threshold = 0.6             # Probability threshold for no speech detection
+condition_on_previous_text = false    # Use previous text as context
+prompt_reset_on_temperature = 0.5     # Temperature threshold to reset prompt
+
+# Voice Activity Detection (VAD) parameters
+vad_onset = 0.5                       # Speech start detection threshold
+vad_offset = 0.363                    # Speech end detection threshold
+
+# Word timestamp parameters
+word_timestamps = false               # Extract word-level timestamps
+prepend_punctuations = "\"'"¿([{-"    # Punctuations to attach to next word
+append_punctuations = "\"'.。,，!！?？:：")]}、"  # Punctuations to attach to previous word
+
+# Chunking parameters for long audio
+chunk_length = 30                     # Length of audio chunks in seconds
+
+# Post-processing parameters
+hallucination_silence_threshold = 0.0 # Silence threshold for hallucination detection (disabled)
+clip_timestamps = 0.0                 # Comma-separated timestamp segments to clip
+max_new_tokens = 0                    # Maximum new tokens per chunk (0 = no limit)
+max_words_per_line = 0               # Maximum words per subtitle line (0 = no limit)
+
+# Speaker diarization parameters
+min_speakers = 0                      # Minimum number of speakers (0 = auto)
+max_speakers = 0                      # Maximum number of speakers (0 = auto)
