@@ -148,7 +148,6 @@ impl From<serde_json::Error> for Error {
 )]
 mod tests {
     use super::*;
-    use pretty_assertions::assert_eq;
     use serde_json;
     use std::error::Error as StdError;
     use std::io;

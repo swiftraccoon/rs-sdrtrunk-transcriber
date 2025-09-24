@@ -36,7 +36,6 @@ rust_decimal = { workspace = true }
 tokio = { workspace = true }
 
 # Test utilities
-pretty_assertions = { workspace = true }
 tempfile = { workspace = true }
 testcontainers = { workspace = true }
 testcontainers-modules = { workspace = true }
@@ -45,5 +44,3 @@ testcontainers-modules = { workspace = true }
 proptest = { workspace = true }
 tokio-test = "0.4"
 
-# Additional test utilities
-futures = { workspace = true }

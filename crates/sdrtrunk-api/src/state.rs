@@ -88,7 +88,6 @@ impl AppState {
 #[allow(clippy::missing_panics_doc)]
 mod tests {
     use super::*;
-    use pretty_assertions::assert_eq;
     use sdrtrunk_database::PgPool;
     use tempfile::TempDir;
 

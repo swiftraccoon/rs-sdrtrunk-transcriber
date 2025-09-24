@@ -482,7 +482,6 @@ impl Default for MonitorConfig {
 #[allow(clippy::missing_panics_doc)]
 mod tests {
     use super::*;
-    use pretty_assertions::assert_eq;
     use std::time::Duration;
 
     #[test]

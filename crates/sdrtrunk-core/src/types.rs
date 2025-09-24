@@ -508,7 +508,6 @@ impl ErrorResponse {
 mod tests {
     use super::*;
     use chrono::{TimeZone, Utc};
-    use pretty_assertions::assert_eq;
     use proptest::prelude::*;
     use serde_json::json;
     use validator::Validate;

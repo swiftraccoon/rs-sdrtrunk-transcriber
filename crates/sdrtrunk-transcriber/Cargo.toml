@@ -47,10 +47,8 @@ async-channel = { workspace = true }
 [dev-dependencies]
 # Testing
 tokio-test = "0.4"
-pretty_assertions = { workspace = true }
 proptest = { workspace = true }
 tempfile = { workspace = true }
-wiremock = { workspace = true }
 
 [features]
 default = []
