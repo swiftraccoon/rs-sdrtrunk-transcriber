@@ -145,9 +145,7 @@ fn add_rate_limit_headers(response: &mut Response, _rate_limiter: &AppRateLimite
 
 /// Generate a unique request ID for tracing
 fn generate_request_id() -> String {
-    use rand::Rng;
-    let mut rng = rand::thread_rng();
-    format!("{:08x}", rng.r#gen::<u32>())
+    uuid::Uuid::new_v4().to_string()[..8].to_string()
 }
 
 /// No-op rate limiting middleware (allows all requests)

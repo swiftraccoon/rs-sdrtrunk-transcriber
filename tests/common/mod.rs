@@ -220,8 +220,12 @@ pub fn generate_random_sdrtrunk_filename() -> String {
     let now = chrono::Utc::now();
     let date = now.format("%Y%m%d").to_string();
     let time = now.format("%H%M%S").to_string();
-    let talkgroup = rand::random::<u16>() % 99999 + 1;
-    let radio_id = rand::random::<u32>() % 9999999 + 1000000;
+    // Use UUID bits for pseudo-random numbers
+    let uuid = uuid::Uuid::new_v4();
+    let bytes = uuid.as_bytes();
+    let talkgroup = ((bytes[0] as u16) << 8 | bytes[1] as u16) % 99999 + 1;
+    let radio_id = ((bytes[2] as u32) << 24 | (bytes[3] as u32) << 16 |
+                   (bytes[4] as u32) << 8 | bytes[5] as u32) % 9999999 + 1000000;
     
     format!("{date}_{time}_TestSystem_TG{talkgroup}_FROM_{radio_id}.mp3")
 }

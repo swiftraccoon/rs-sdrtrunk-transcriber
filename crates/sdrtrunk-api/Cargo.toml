@@ -59,9 +59,6 @@ governor = { workspace = true }
 
 # URL encoding removed - using manual parsing
 
-# Random number generation
-rand = { workspace = true }
-
 # HTTP status codes and utilities
 http = { workspace = true }
 

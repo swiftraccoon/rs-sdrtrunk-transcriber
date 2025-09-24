@@ -52,18 +52,11 @@ clap = { version = "4.5", features = ["derive", "env", "wrap_help", "string"] }
 config = "0.14"
 
 # Performance and data structures
-indexmap = { version = "2.5", features = ["serde"] }
 dashmap = "6.1"
-crossbeam = "0.8"
-rayon = "1.10"
 parking_lot = "0.12"
-arc-swap = "1.7"
-# once_cell replaced with std::sync::LazyLock
 
 # Memory management and safety
 bytes = "1.7"
-smallvec = { version = "1.13", features = ["serde", "const_generics"] }
-tinyvec = { version = "1.8", features = ["alloc", "serde"] }
 
 # Cryptography and security
 ring = "0.17"
@@ -85,17 +78,8 @@ rust_decimal = { version = "1.36", features = ["serde", "db-postgres"] }
 # Date and time
 chrono = { version = "0.4", features = ["serde", "clock"] }
 
-# Audio and signal processing
-hound = "3.5"  # WAV file I/O
-dasp = { version = "0.11", features = ["all"] }
-rubato = "0.15"  # Audio resampling
-apodize = "1.0"  # Windowing functions
-
-# Numeric computing and DSP
-ndarray = { version = "0.16", features = ["serde", "rayon", "blas"] }
-num-complex = { version = "0.4", features = ["serde", "rand"] }
+# Numeric computing
 num-traits = "0.2"
-rustfft = "6.2"
 
 # Regular expressions and text processing
 regex = "1.10"
@@ -127,9 +111,8 @@ governor = "0.7"
 notify = { version = "6.1", features = ["macos_fsevent", "macos_kqueue"] }
 notify-debouncer-full = "0.3"
 
-# UUID and random number generation
+# UUID generation
 uuid = { version = "1.10", features = ["v4", "serde"] }
-rand = { version = "0.8", features = ["std_rng"] }
 
 # Testing utilities
 testcontainers = "0.23"

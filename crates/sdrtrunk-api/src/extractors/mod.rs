@@ -193,9 +193,7 @@ where
 
 /// Generate a unique request ID
 fn generate_request_id() -> String {
-    use rand::Rng;
-    let mut rng = rand::thread_rng();
-    format!("req_{:016x}", rng.r#gen::<u64>())
+    format!("req_{}", &uuid::Uuid::new_v4().to_string()[..16])
 }
 
 /// Extractor for request timing
