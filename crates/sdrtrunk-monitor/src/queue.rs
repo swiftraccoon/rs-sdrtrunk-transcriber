@@ -524,6 +524,7 @@ impl FileQueue {
 
 #[cfg(test)]
 #[allow(clippy::missing_panics_doc)]
+#[allow(clippy::float_cmp)]
 mod tests {
     use super::*;
     use tempfile::TempDir;

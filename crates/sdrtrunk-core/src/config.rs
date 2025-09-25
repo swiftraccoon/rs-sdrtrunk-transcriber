@@ -654,9 +654,8 @@ mod tests {
         assert!(!config.logging.format.is_empty());
     }
 
-    #[test]
-    fn test_complex_config_scenario() {
-        let complex_config = Config {
+    fn create_complex_config() -> Config {
+        Config {
             server: ServerConfig {
                 host: "192.168.1.100".to_string(),
                 port: 9090,
@@ -715,34 +714,43 @@ mod tests {
                 service_port: Some(9001),
                 max_retries: 5,
             }),
-        };
+        }
+    }
 
-        // Test serialization and deserialization of complex config
+    #[test]
+    fn test_complex_config_serialization() {
+        let complex_config = create_complex_config();
+
+        // Test serialization and deserialization
         let serialized = serde_json::to_string_pretty(&complex_config).unwrap();
         let deserialized: Config = serde_json::from_str(&serialized).unwrap();
 
+        // Verify server config
         assert_eq!(deserialized.server.host, "192.168.1.100");
         assert_eq!(deserialized.server.port, 9090);
         assert_eq!(deserialized.server.workers, 8);
 
+        // Verify database config
         assert!(deserialized.database.url.contains("db.example.com"));
         assert_eq!(deserialized.database.max_connections, 200);
 
-        assert_eq!(
-            deserialized.storage.base_dir,
-            PathBuf::from("/data/sdrtrunk")
-        );
+        // Verify storage config
+        assert_eq!(deserialized.storage.base_dir, PathBuf::from("/data/sdrtrunk"));
         assert_eq!(deserialized.storage.allowed_extensions.len(), 4);
 
+        // Verify API config
         assert_eq!(deserialized.api.cors_origins.len(), 2);
         assert_eq!(deserialized.api.rate_limit, 120);
 
+        // Verify security config
         assert!(deserialized.security.require_api_key);
         assert!(deserialized.security.enable_ip_restrictions);
 
+        // Verify logging config
         assert_eq!(deserialized.logging.level, "debug");
         assert!(deserialized.logging.file.is_some());
 
+        // Verify optional configs
         assert!(deserialized.monitor.is_some());
         let monitor = deserialized.monitor.unwrap();
         assert!(monitor.enabled);

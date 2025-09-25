@@ -1,7 +1,11 @@
 //! Comprehensive benchmarks for sdrtrunk-core functionality
 
 use criterion::{BenchmarkId, Criterion, Throughput, criterion_group, criterion_main};
-use sdrtrunk_core::utils::*;
+use sdrtrunk_core::utils::{
+    calculate_file_checksum, format_duration, format_frequency, generate_storage_filename,
+    parse_duration, parse_sdrtrunk_filename, sanitize_filename, validate_file_extension,
+    validate_system_id,
+};
 
 /// Benchmark filename parsing with realistic data
 fn bench_filename_parsing(c: &mut Criterion) {
@@ -40,7 +44,7 @@ fn bench_filename_parsing(c: &mut Criterion) {
                 results.push(parse_sdrtrunk_filename(filename));
             }
             results
-        })
+        });
     });
 
     group.finish();
@@ -84,7 +88,7 @@ fn bench_file_validation(c: &mut Criterion) {
                 }
             }
             valid_count
-        })
+        });
     });
 
     // Benchmark system ID validation
@@ -112,7 +116,7 @@ fn bench_file_validation(c: &mut Criterion) {
                 }
             }
             valid_count
-        })
+        });
     });
 
     group.finish();
@@ -139,7 +143,7 @@ fn bench_file_operations(c: &mut Criterion) {
                 filenames.push(generate_storage_filename(file));
             }
             filenames
-        })
+        });
     });
 
     // Benchmark filename sanitization
@@ -161,13 +165,17 @@ fn bench_file_operations(c: &mut Criterion) {
                 sanitized.push(sanitize_filename(filename));
             }
             sanitized
-        })
+        });
     });
 
     group.finish();
 }
 
 /// Benchmark checksum calculation with realistic file sizes
+///
+/// # Panics
+///
+/// Panics if memory allocation fails when creating test data
 fn bench_checksum_calculation(c: &mut Criterion) {
     let mut group = c.benchmark_group("checksum");
 
@@ -184,7 +192,7 @@ fn bench_checksum_calculation(c: &mut Criterion) {
         // Create realistic data (not just zeros)
         let mut data = vec![0u8; size];
         for (i, byte) in data.iter_mut().enumerate() {
-            *byte = (i % 256) as u8;
+            *byte = u8::try_from(i % 256).expect("modulo 256 always fits in u8");
         }
 
         group.throughput(Throughput::Bytes(size as u64));
@@ -209,7 +217,7 @@ fn bench_formatting_operations(c: &mut Criterion) {
         90.0,     // 1 minute 30 seconds
         3661.0,   // 1 hour 1 minute 1 second
         86400.0,  // 24 hours
-        999999.0, // Large duration
+        999_999.0, // Large duration
     ];
 
     group.bench_function("format_durations", |b| {
@@ -219,7 +227,7 @@ fn bench_formatting_operations(c: &mut Criterion) {
                 formatted.push(format_duration(duration));
             }
             formatted
-        })
+        });
     });
 
     // Benchmark duration parsing
@@ -240,7 +248,7 @@ fn bench_formatting_operations(c: &mut Criterion) {
                 parsed.push(parse_duration(duration_str));
             }
             parsed
-        })
+        });
     });
 
     // Benchmark frequency formatting
@@ -260,7 +268,7 @@ fn bench_formatting_operations(c: &mut Criterion) {
                 formatted.push(format_frequency(frequency));
             }
             formatted
-        })
+        });
     });
 
     group.finish();
@@ -282,7 +290,7 @@ fn bench_realistic_workload(c: &mut Criterion) {
                     minute,
                     system,
                     10000 + hour * 100 + minute,
-                    1000000 + hour * 1000 + minute
+                    1_000_000 + hour * 1000 + minute
                 );
                 filenames.push(filename);
             }
@@ -311,7 +319,7 @@ fn bench_realistic_workload(c: &mut Criterion) {
                 }
             }
             (valid_files, total_size)
-        })
+        });
     });
 
     group.finish();

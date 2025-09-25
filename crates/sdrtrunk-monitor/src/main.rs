@@ -488,6 +488,7 @@ async fn scan_directory(
 }
 
 #[cfg(test)]
+#[allow(clippy::missing_panics_doc)]
 mod tests {
     use super::*;
     use std::path::PathBuf;

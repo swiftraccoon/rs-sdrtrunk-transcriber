@@ -18,7 +18,7 @@ fn get_home_directory() -> Option<PathBuf> {
 
     // Fallback to HOMEDRIVE + HOMEPATH on Windows
     if let (Ok(homedrive), Ok(homepath)) = (std::env::var("HOMEDRIVE"), std::env::var("HOMEPATH")) {
-        return Some(PathBuf::from(format!("{}{}", homedrive, homepath)));
+        return Some(PathBuf::from(format!("{homedrive}{homepath}")));
     }
 
     None
@@ -244,7 +244,7 @@ const fn default_processing_interval() -> u64 {
 
 fn default_processing_workers() -> usize {
     std::thread::available_parallelism()
-        .map(|n| n.get())
+        .map(std::num::NonZero::get)
         .unwrap_or(4)
         .max(2)
 }
@@ -480,6 +480,8 @@ impl Default for MonitorConfig {
 
 #[cfg(test)]
 #[allow(clippy::missing_panics_doc)]
+#[allow(clippy::cognitive_complexity)]
+#[allow(clippy::redundant_closure)]
 mod tests {
     use super::*;
     use std::time::Duration;
@@ -495,7 +497,7 @@ mod tests {
         assert!(!default_follow_symlinks());
         assert_eq!(default_processing_interval(), 5);
         let expected = std::thread::available_parallelism()
-            .map(|n| n.get())
+            .map(std::num::NonZero::get)
             .unwrap_or(4)
             .max(2);
         assert_eq!(default_processing_workers(), expected);
@@ -590,7 +592,7 @@ mod tests {
 
         assert_eq!(config.processing.processing_interval_seconds, 5);
         let expected = std::thread::available_parallelism()
-            .map(|n| n.get())
+            .map(std::num::NonZero::get)
             .unwrap_or(4)
             .max(2);
         assert_eq!(config.processing.processing_workers, expected);
@@ -885,7 +887,7 @@ mod tests {
         assert_eq!(config.watch.file_patterns, vec!["*.mp3"]);
         assert_eq!(config.watch.file_extensions, vec!["mp3"]);
         let expected = std::thread::available_parallelism()
-            .map(|n| n.get())
+            .map(std::num::NonZero::get)
             .unwrap_or(4)
             .max(2);
         assert_eq!(config.processing.processing_workers, expected);

@@ -67,7 +67,7 @@ impl TranscriptionRequest {
     }
 
     /// Increment retry count
-    pub fn increment_retry(&mut self) {
+    pub const fn increment_retry(&mut self) {
         self.retry_count += 1;
     }
 }
@@ -186,7 +186,7 @@ pub struct TranscriptionSegment {
 /// Speaker segment from diarization
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SpeakerSegment {
-    /// Speaker identifier (e.g., "SPEAKER_00")
+    /// Speaker identifier (e.g., "`SPEAKER_00`")
     pub speaker: String,
 
     /// Start time in seconds

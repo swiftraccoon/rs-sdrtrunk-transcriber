@@ -398,6 +398,7 @@ impl FileMonitor {
     /// Returns [`MonitorError`] if:
     /// - Cannot read directory entries
     /// - I/O errors occur during file metadata access
+    #[allow(clippy::cognitive_complexity)]
     async fn scan_directory(
         &self,
         directory: &Path,

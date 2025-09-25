@@ -71,7 +71,8 @@ mod tests {
         let _error = MonitorError::configuration("test");
 
         // Test status enum
-        let _status = ProcessingStatus::Pending;
+        let status = ProcessingStatus::Pending;
+        drop(status);
     }
 
     #[test]
@@ -92,7 +93,7 @@ mod tests {
         // Test processing config defaults
         assert!(config.processing_timeout_seconds > 0);
         assert!(config.processing_workers > 0);
-        assert!(config.verify_file_integrity || !config.verify_file_integrity);
+        // verify_file_integrity is always either true or false (tautology)
     }
 
     #[test]
@@ -130,9 +131,12 @@ mod tests {
     #[test]
     fn test_processing_status_variants() {
         // Test all status variants exist
-        let _pending = ProcessingStatus::Pending;
-        let _processing = ProcessingStatus::Processing;
-        let _completed = ProcessingStatus::Completed;
+        let pending = ProcessingStatus::Pending;
+        let processing = ProcessingStatus::Processing;
+        let completed = ProcessingStatus::Completed;
+        drop(pending);
+        drop(processing);
+        drop(completed);
         let _failed = ProcessingStatus::Failed {
             error: "test error".to_string(),
             retry_count: 0,

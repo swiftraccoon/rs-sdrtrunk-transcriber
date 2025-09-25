@@ -692,6 +692,10 @@ impl FileProcessor {
 
 #[cfg(test)]
 #[allow(clippy::missing_panics_doc)]
+#[allow(clippy::cast_possible_wrap)]
+#[allow(clippy::cast_precision_loss)]
+#[allow(clippy::case_sensitive_file_extension_comparisons)]
+#[allow(clippy::needless_pass_by_value)]
 mod tests {
     use super::*;
     use crate::{QueuedFile, config::ProcessingConfig};

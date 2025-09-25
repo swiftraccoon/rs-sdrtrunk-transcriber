@@ -202,6 +202,10 @@ impl From<std::io::Error> for MonitorError {
 }
 
 #[cfg(test)]
+#[allow(clippy::missing_panics_doc)]
+#[allow(clippy::unnecessary_wraps)]
+#[allow(clippy::items_after_statements)]
+#[allow(clippy::missing_errors_doc)]
 mod tests {
     use super::*;
     use std::path::PathBuf;
@@ -294,7 +298,7 @@ mod tests {
     #[test]
     fn test_file_already_processed_error() {
         let path = PathBuf::from("/tmp/processed.mp3");
-        let error = MonitorError::FileAlreadyProcessed { path: path };
+        let error = MonitorError::FileAlreadyProcessed { path };
         assert!(matches!(error, MonitorError::FileAlreadyProcessed { .. }));
         let display_str = format!("{error}");
         assert!(display_str.contains("File already processed"));

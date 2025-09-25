@@ -1,4 +1,4 @@
-//! WhisperX transcription service implementation
+//! `WhisperX` transcription service implementation
 
 use crate::error::{TranscriptionError, TranscriptionResult};
 use crate::service::{AudioValidation, ServiceCapabilities, ServiceHealth, TranscriptionService};
@@ -91,9 +91,9 @@ struct PythonWord {
     speaker: Option<String>,
 }
 
-/// WhisperX transcription service
+/// `WhisperX` transcription service
 ///
-/// This service integrates with the Python WhisperX service for
+/// This service integrates with the Python `WhisperX` service for
 /// high-quality transcription with speaker diarization.
 pub struct WhisperXService {
     /// Configuration
@@ -116,7 +116,7 @@ pub struct WhisperXService {
 }
 
 impl WhisperXService {
-    /// Create a new WhisperX service
+    /// Create a new `WhisperX` service
     pub fn new(config: TranscriptionConfig) -> Self {
         let service_port = config
             .service_port

@@ -12,7 +12,7 @@ use uuid::Uuid;
 /// Core trait for transcription service implementations
 ///
 /// This trait defines the interface that all transcription backends must implement,
-/// allowing for pluggable transcription services (WhisperX, mock, etc.).
+/// allowing for pluggable transcription services (`WhisperX`, mock, etc.).
 #[async_trait]
 pub trait TranscriptionService: Send + Sync {
     /// Initialize the transcription service
@@ -140,7 +140,7 @@ pub struct AudioValidation {
 
 impl AudioValidation {
     /// Create a valid result
-    pub fn valid(format: String, duration: f64, file_size: u64) -> Self {
+    pub const fn valid(format: String, duration: f64, file_size: u64) -> Self {
         Self {
             valid: true,
             format: Some(format),
@@ -226,7 +226,7 @@ impl Default for ServiceCapabilities {
 }
 
 impl ServiceCapabilities {
-    /// Create WhisperX capabilities
+    /// Create `WhisperX` capabilities
     pub fn whisperx() -> Self {
         Self {
             diarization: true,
@@ -291,7 +291,7 @@ mod tests {
 
     #[test]
     fn test_audio_validation() {
-        let valid = AudioValidation::valid("mp3".to_string(), 30.5, 1024000);
+        let valid = AudioValidation::valid("mp3".to_string(), 30.5, 1_024_000);
         assert!(valid.valid);
         assert_eq!(valid.format.as_deref(), Some("mp3"));
         assert_eq!(valid.duration_seconds, Some(30.5));

@@ -54,7 +54,7 @@ impl MockTranscriptionService {
     }
 
     /// Set processing delay for testing
-    pub fn with_delay(mut self, delay_ms: u64) -> Self {
+    pub const fn with_delay(mut self, delay_ms: u64) -> Self {
         self.processing_delay_ms = delay_ms;
         self
     }

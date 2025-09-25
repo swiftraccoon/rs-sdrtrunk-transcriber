@@ -745,6 +745,10 @@ impl Drop for MonitorService {
 
 #[cfg(test)]
 #[allow(clippy::missing_panics_doc)]
+#[allow(clippy::float_cmp)]
+#[allow(clippy::field_reassign_with_default)]
+#[allow(clippy::significant_drop_tightening)]
+#[allow(clippy::cast_precision_loss)]
 mod tests {
     use super::*;
     use tempfile::TempDir;
@@ -1195,7 +1199,7 @@ mod tests {
         metrics.uptime_seconds = u64::MAX;
 
         assert_eq!(metrics.files_detected, u64::MAX);
-        assert_eq!(metrics.avg_processing_time_ms, f64::MAX);
+        assert!((metrics.avg_processing_time_ms - f64::MAX).abs() < f64::EPSILON);
         assert_eq!(metrics.uptime_seconds, u64::MAX);
 
         // Test with zero values
@@ -1435,7 +1439,7 @@ mod tests {
         assert_eq!(metrics.avg_processing_time_ms, f64::MIN);
 
         metrics.avg_processing_time_ms = f64::MAX;
-        assert_eq!(metrics.avg_processing_time_ms, f64::MAX);
+        assert!((metrics.avg_processing_time_ms - f64::MAX).abs() < f64::EPSILON);
 
         // Test special float values
         metrics.avg_processing_time_ms = f64::INFINITY;
@@ -1453,7 +1457,8 @@ mod tests {
         let mut metrics = ServiceMetrics::default();
 
         // Test counter behavior near maximum values
-        metrics.files_detected = u64::MAX - 1;
+        let max_minus_one = u64::MAX - 1;
+        metrics.files_detected = max_minus_one;
         metrics.files_queued = u64::MAX - 1;
 
         // Simulate incrementing counters (would wrap in real code)

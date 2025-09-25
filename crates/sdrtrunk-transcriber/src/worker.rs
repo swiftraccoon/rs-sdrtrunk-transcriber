@@ -276,8 +276,8 @@ mod tests {
         };
 
         let mut service = MockTranscriptionService::new();
-        let mut init_config = config.clone();
-        service.initialize(&mut init_config).await.unwrap();
+        let init_config = config.clone();
+        service.initialize(&init_config).await.unwrap();
 
         let service = Arc::new(service);
         let db_pool = create_test_pool().await;

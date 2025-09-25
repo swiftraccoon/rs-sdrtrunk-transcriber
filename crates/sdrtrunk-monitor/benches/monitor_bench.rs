@@ -1,4 +1,10 @@
 //! Comprehensive benchmarks for the sdrtrunk-monitor functionality
+#![allow(clippy::semicolon_if_nothing_returned)]
+#![allow(clippy::cast_possible_truncation)]
+#![allow(clippy::cast_possible_wrap)]
+#![allow(clippy::cast_precision_loss)]
+#![allow(clippy::cast_sign_loss)]
+#![allow(clippy::no_effect_underscore_binding)]
 
 use chrono::Utc;
 use criterion::{BenchmarkId, Criterion, Throughput, black_box, criterion_group, criterion_main};
@@ -136,8 +142,8 @@ fn bench_queue_operations(c: &mut Criterion) {
                 id: Uuid::new_v4(),
                 path: PathBuf::from(format!("/recordings/System_TG{}_file_{}.mp3", i % 100, i)),
                 size: 100_000 + (i as u64 * 1000), // 100KB to several MB
-                priority: (i % 5) as i32,          // Priority 0-4
-                retry_count: (i % 3) as u32,
+                priority: i32::try_from(i % 5).unwrap_or(0),  // Priority 0-4
+                retry_count: u32::try_from(i % 3).unwrap_or(0),
             });
         }
 
@@ -279,7 +285,7 @@ fn bench_file_validation(c: &mut Criterion) {
 
             for chunk in &data_chunks {
                 // Simulate checksum calculation
-                let sum: u64 = chunk.iter().map(|&b| b as u64).sum();
+                let sum: u64 = chunk.iter().map(|&b| u64::from(b)).sum();
                 checksums.push(sum);
             }
 
@@ -335,8 +341,8 @@ fn bench_monitoring_service(c: &mut Criterion) {
 
             for i in 0..100 {
                 let metric = (
-                    format!("metric_{}", i),
-                    i as f64 * 1.5,
+                    format!("metric_{i}"),
+                    f64::from(i) * 1.5,
                     Utc::now().timestamp_millis() - start_time.timestamp_millis(),
                 );
                 metrics.push(metric);
@@ -348,7 +354,7 @@ fn bench_monitoring_service(c: &mut Criterion) {
             let max = metrics
                 .iter()
                 .map(|(_, v, _)| *v)
-                .fold(0.0_f64, |a, b| a.max(b));
+                .fold(0.0_f64, f64::max);
 
             black_box((metrics.len(), avg, max))
         })
@@ -405,8 +411,8 @@ fn bench_realistic_workload(c: &mut Criterion) {
             for i in 0..100 {
                 let file = QueuedFile {
                     id: Uuid::new_v4(),
-                    path: PathBuf::from(format!("/recordings/file_{}.mp3", i)),
-                    size: 100_000 + (i as u64 * 5000),
+                    path: PathBuf::from(format!("/recordings/file_{i}.mp3")),
+                    size: 100_000 + (u64::try_from(i).unwrap_or(0) * 5000),
                     priority: (100 - i) / 20, // Higher priority for newer files
                     retry_count: 0,
                 };

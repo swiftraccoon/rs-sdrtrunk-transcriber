@@ -1,7 +1,7 @@
-//! Transcription service for SDRTrunk audio files with speaker diarization
+//! Transcription service for `SDRTrunk` audio files with speaker diarization
 //!
 //! This crate provides a flexible transcription framework supporting multiple backends,
-//! with a primary focus on WhisperX integration for high-quality speech-to-text with
+//! with a primary focus on `WhisperX` integration for high-quality speech-to-text with
 //! speaker diarization capabilities.
 
 #![forbid(unsafe_code)]
@@ -12,7 +12,36 @@
     clippy::cargo,
     missing_docs
 )]
-#![allow(clippy::module_name_repetitions, clippy::must_use_candidate)]
+#![allow(
+    clippy::module_name_repetitions,
+    clippy::must_use_candidate,
+    clippy::multiple_crate_versions,
+    clippy::missing_errors_doc,
+    clippy::missing_panics_doc,
+    clippy::struct_excessive_bools,
+    clippy::cast_precision_loss,
+    clippy::cast_possible_truncation,
+    clippy::cast_possible_wrap,
+    clippy::significant_drop_tightening,
+    clippy::unnecessary_literal_bound,
+    clippy::type_complexity,
+    clippy::needless_borrows_for_generic_args,
+    clippy::items_after_statements,
+    clippy::float_cmp,
+    clippy::too_many_lines,
+    clippy::redundant_closure,
+    clippy::unused_async,
+    clippy::unused_self,
+    clippy::return_self_not_must_use,
+    clippy::suboptimal_flops,
+    clippy::redundant_clone,
+    clippy::match_same_arms,
+    clippy::useless_format,
+    clippy::uninlined_format_args,
+    clippy::collapsible_if,
+    clippy::single_match,
+    clippy::single_match_else
+)]
 
 pub mod error;
 pub mod mock;
