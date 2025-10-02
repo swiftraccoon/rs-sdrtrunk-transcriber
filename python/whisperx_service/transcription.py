@@ -56,6 +56,14 @@ class TranscriptionService:
             logger.info(f"Loading WhisperX model {config.model_size} on {self.device}")
 
             # Build ASR options from config
+            # Handle temperature - can be a single float or a list of floats
+            if isinstance(config.temperature, list):
+                temperatures = config.temperature
+            elif config.temperature_increment_on_fallback == 0:
+                temperatures = [config.temperature]
+            else:
+                temperatures = list(np.arange(config.temperature, 1.0 + 1e-6, config.temperature_increment_on_fallback))
+            
             asr_options = {
                 "beam_size": config.beam_size,
                 "best_of": config.best_of,
@@ -63,8 +71,7 @@ class TranscriptionService:
                 "length_penalty": config.length_penalty,
                 "repetition_penalty": config.repetition_penalty,
                 "no_repeat_ngram_size": config.no_repeat_ngram_size,
-                "temperatures": [config.temperature] if config.temperature_increment_on_fallback == 0 else
-                    list(np.arange(config.temperature, 1.0 + 1e-6, config.temperature_increment_on_fallback)),
+                "temperatures": temperatures,
                 "compression_ratio_threshold": config.compression_ratio_threshold,
                 "log_prob_threshold": config.logprob_threshold,
                 "no_speech_threshold": config.no_speech_threshold,

@@ -2,7 +2,7 @@
 
 import os
 from pathlib import Path
-from typing import Optional
+from typing import Optional, Union
 import tomllib
 
 from pydantic_settings import BaseSettings
@@ -35,7 +35,7 @@ class ServiceConfig(BaseSettings):
     no_repeat_ngram_size: int = 0
 
     # Temperature and fallback
-    temperature: float = 0.0
+    temperature: Union[float, list[float]] = 0.0
     temperature_increment_on_fallback: float = 0.2
     prompt_reset_on_temperature: float = 0.5
 
