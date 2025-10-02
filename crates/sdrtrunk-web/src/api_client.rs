@@ -115,6 +115,32 @@ impl ApiClient {
         Ok(stats)
     }
 
+    /// Get details for a specific call
+    pub async fn get_call_details(&self, call_id: uuid::Uuid) -> Result<serde_json::Value> {
+        let url = format!("{}/api/calls/{}", self.base_url, call_id);
+
+        let mut request = self.client.get(&url);
+
+        if let Some(ref api_key) = self.api_key {
+            request = request.header("X-API-Key", api_key);
+        }
+
+        let response = request.send().await
+            .map_err(|e| sdrtrunk_core::Error::Other(format!("Failed to fetch call details: {e}")))?;
+
+        if !response.status().is_success() {
+            return Err(sdrtrunk_core::Error::Other(format!(
+                "Call not found: {}",
+                response.status()
+            )));
+        }
+
+        let call_data: serde_json::Value = response.json().await
+            .map_err(|e| sdrtrunk_core::Error::Other(format!("Failed to parse call details: {e}")))?;
+
+        Ok(call_data)
+    }
+
     /// Get global statistics
     pub async fn get_global_stats(&self) -> Result<serde_json::Value> {
         let url = format!("{}/api/stats/global", self.base_url);

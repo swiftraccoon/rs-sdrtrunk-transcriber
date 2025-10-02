@@ -2,9 +2,14 @@
 # Copy this file to config.toml and update with your values
 
 [server]
-# Server binding configuration
+# API server binding configuration
 host = "0.0.0.0"
 port = 8080
+
+[webserver]
+host = "0.0.0.0"
+port = 9000
+workers = 4
 
 [database]
 # PostgreSQL connection string

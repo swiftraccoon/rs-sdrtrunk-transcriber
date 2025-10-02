@@ -9,7 +9,7 @@ use axum::extract::ws::{WebSocket, Message};
 use futures_util::{SinkExt, StreamExt};
 use std::sync::Arc;
 use tokio::time::{interval, Duration};
-use tracing::{error, info};
+use tracing::{error, info, warn};
 use crate::{api_client::ListCallsQuery, state::AppState};
 
 /// API endpoint for calls data - proxies to backend API
@@ -121,11 +121,57 @@ pub async fn serve_audio(
     Path(call_id): Path<uuid::Uuid>,
     State(state): State<Arc<AppState>>,
 ) -> Result<Response, StatusCode> {
-    // TODO: Get call details from API to find audio file path
-    // For now, return a placeholder response
     info!("Audio request for call: {}", call_id);
 
-    Err(StatusCode::NOT_IMPLEMENTED)
+    // Get call details from API to find audio file path
+    let call_data = match state.api_client.get_call_details(call_id).await {
+        Ok(data) => data,
+        Err(e) => {
+            error!("Failed to get call details: {}", e);
+            return Err(StatusCode::NOT_FOUND);
+        }
+    };
+
+    // Extract audio file path
+    let audio_filename = call_data.get("audio_filename")
+        .and_then(|f| f.as_str())
+        .ok_or_else(|| {
+            warn!("No audio filename for call {}", call_id);
+            StatusCode::NOT_FOUND
+        })?;
+
+    // Construct file path based on config
+    let storage_base = &state.config.storage.base_dir;
+    let upload_dir = &state.config.storage.upload_dir;
+    let audio_path = storage_base.join(upload_dir).join(audio_filename);
+
+    info!("Serving audio file: {:?}", audio_path);
+
+    // Check if file exists
+    if !audio_path.exists() {
+        warn!("Audio file not found: {:?}", audio_path);
+        return Err(StatusCode::NOT_FOUND);
+    }
+
+    // Read and serve the file
+    let file_contents = tokio::fs::read(&audio_path).await
+        .map_err(|e| {
+            error!("Failed to read audio file {:?}: {}", audio_path, e);
+            StatusCode::INTERNAL_SERVER_ERROR
+        })?;
+
+    // Build response with proper headers
+    let response = Response::builder()
+        .header("Content-Type", "audio/mpeg")
+        .header("Content-Length", file_contents.len())
+        .header("Accept-Ranges", "bytes")
+        .body(file_contents.into())
+        .map_err(|e| {
+            error!("Failed to build response: {}", e);
+            StatusCode::INTERNAL_SERVER_ERROR
+        })?;
+
+    Ok(response)
 }
 
 /// Health check endpoint
