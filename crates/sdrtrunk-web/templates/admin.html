@@ -1,0 +1,267 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SDRTrunk Transcriber - Administration</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 0; padding: 20px; background: #f5f5f5; }
+        .header { background: #2c3e50; color: white; padding: 1rem; margin: -20px -20px 20px; }
+        .nav { display: flex; gap: 1rem; margin-top: 1rem; }
+        .nav a { color: white; text-decoration: none; padding: 0.5rem 1rem; border-radius: 4px; }
+        .nav a:hover { background: #34495e; }
+        .nav a.active { background: #34495e; }
+        .admin-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(350px, 1fr)); gap: 1rem; }
+        .card { background: white; padding: 1.5rem; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+        .card h3 { margin-top: 0; color: #2c3e50; }
+        .btn { background: #3498db; color: white; border: none; padding: 0.5rem 1rem; border-radius: 4px; cursor: pointer; margin: 0.25rem; }
+        .btn:hover { background: #2980b9; }
+        .btn-warning { background: #f39c12; }
+        .btn-warning:hover { background: #d68910; }
+        .btn-danger { background: #e74c3c; }
+        .btn-danger:hover { background: #c0392b; }
+        .form-group { margin: 1rem 0; }
+        .form-group label { display: block; margin-bottom: 0.5rem; font-weight: bold; }
+        .form-group input, .form-group select, .form-group textarea { width: 100%; padding: 0.5rem; border: 1px solid #ddd; border-radius: 4px; box-sizing: border-box; }
+        .form-group textarea { height: 100px; resize: vertical; }
+        .api-key-list { max-height: 300px; overflow-y: auto; }
+        .api-key-item { display: flex; justify-content: space-between; align-items: center; padding: 0.5rem; margin: 0.5rem 0; background: #ecf0f1; border-radius: 4px; }
+        .api-key-name { font-weight: bold; }
+        .api-key-date { color: #7f8c8d; font-size: 0.9em; }
+        .status-indicator { display: inline-block; width: 12px; height: 12px; border-radius: 50%; margin-right: 0.5rem; }
+        .status-online { background: #27ae60; }
+        .status-offline { background: #e74c3c; }
+        .status-warning { background: #f39c12; }
+        .system-health { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin: 1rem 0; }
+        .health-item { display: flex; align-items: center; padding: 0.5rem; background: #ecf0f1; border-radius: 4px; }
+        .config-section { margin: 1rem 0; padding: 1rem; background: #ecf0f1; border-radius: 4px; }
+        .alert { padding: 1rem; margin: 1rem 0; border-radius: 4px; }
+        .alert-success { background: #d4edda; color: #155724; border: 1px solid #c3e6cb; }
+        .alert-warning { background: #fff3cd; color: #856404; border: 1px solid #ffeaa7; }
+        .alert-danger { background: #f8d7da; color: #721c24; border: 1px solid #f5c6cb; }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>SDRTrunk Transcriber</h1>
+        <nav class="nav">
+            <a href="/">Dashboard</a>
+            <a href="/calls">Calls</a>
+            <a href="/stats">Statistics</a>
+            <a href="/admin" class="active">Admin</a>
+        </nav>
+    </div>
+
+    <h2>Administration</h2>
+
+    <div class="admin-grid">
+        <div class="card">
+            <h3>System Health</h3>
+            <div class="system-health">
+                <div class="health-item">
+                    <span class="status-indicator status-online"></span>
+                    <span>API Server</span>
+                </div>
+                <div class="health-item">
+                    <span class="status-indicator status-online"></span>
+                    <span>Database</span>
+                </div>
+                <div class="health-item">
+                    <span class="status-indicator status-online"></span>
+                    <span>WhisperX Service</span>
+                </div>
+                <div class="health-item">
+                    <span class="status-indicator status-online"></span>
+                    <span>File Monitor</span>
+                </div>
+            </div>
+            <button class="btn" onclick="refreshHealth()">Refresh Status</button>
+        </div>
+
+        <div class="card">
+            <h3>API Key Management</h3>
+            <div class="api-key-list" id="api-key-list">
+                <p><em>No API keys configured</em></p>
+            </div>
+            <button class="btn" onclick="showCreateApiKey()">Create New API Key</button>
+        </div>
+
+        <div class="card">
+            <h3>Database Maintenance</h3>
+            <div class="config-section">
+                <p><strong>Database Size:</strong> <span id="db-size">Calculating...</span></p>
+                <p><strong>Total Records:</strong> <span id="total-records">0</span></p>
+                <p><strong>Oldest Record:</span> <span id="oldest-record">N/A</span></p>
+            </div>
+            <button class="btn btn-warning" onclick="cleanupDatabase()">Run Cleanup</button>
+            <button class="btn btn-danger" onclick="confirmVacuum()">Vacuum Database</button>
+        </div>
+
+        <div class="card">
+            <h3>System Configuration</h3>
+            <div class="form-group">
+                <label>Max File Size (MB):</label>
+                <input type="number" id="max-file-size" value="100" min="1" max="1000">
+            </div>
+            <div class="form-group">
+                <label>Transcription Workers:</label>
+                <input type="number" id="transcription-workers" value="2" min="1" max="8">
+            </div>
+            <div class="form-group">
+                <label>Log Level:</label>
+                <select id="log-level">
+                    <option value="ERROR">Error</option>
+                    <option value="WARN">Warning</option>
+                    <option value="INFO" selected>Info</option>
+                    <option value="DEBUG">Debug</option>
+                    <option value="TRACE">Trace</option>
+                </select>
+            </div>
+            <button class="btn" onclick="saveConfiguration()">Save Configuration</button>
+        </div>
+
+        <div class="card">
+            <h3>Service Control</h3>
+            <div class="config-section">
+                <p><strong>Uptime:</strong> <span id="uptime">Calculating...</span></p>
+                <p><strong>Memory Usage:</strong> <span id="memory-usage">Normal</span></p>
+                <p><strong>CPU Usage:</strong> <span id="cpu-usage">Normal</span></p>
+            </div>
+            <button class="btn btn-warning" onclick="restartServices()">Restart Services</button>
+            <button class="btn btn-danger" onclick="confirmShutdown()">Shutdown System</button>
+        </div>
+
+        <div class="card">
+            <h3>Backup & Export</h3>
+            <div class="form-group">
+                <label>Export Format:</label>
+                <select id="export-format">
+                    <option value="json">JSON</option>
+                    <option value="csv">CSV</option>
+                    <option value="sqlite">SQLite Database</option>
+                </select>
+            </div>
+            <div class="form-group">
+                <label>Date Range:</label>
+                <input type="date" id="export-from" placeholder="From">
+                <input type="date" id="export-to" placeholder="To">
+            </div>
+            <button class="btn" onclick="exportData()">Export Data</button>
+            <button class="btn" onclick="createBackup()">Create Backup</button>
+        </div>
+    </div>
+
+    <!-- Modal for creating API keys -->
+    <div id="api-key-modal" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); z-index: 1000;">
+        <div style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); background: white; padding: 2rem; border-radius: 8px; width: 400px;">
+            <h3>Create API Key</h3>
+            <div class="form-group">
+                <label>Name:</label>
+                <input type="text" id="new-api-key-name" placeholder="Enter key name">
+            </div>
+            <div class="form-group">
+                <label>Description:</label>
+                <textarea id="new-api-key-description" placeholder="Enter description"></textarea>
+            </div>
+            <div class="form-group">
+                <label>Allowed Systems (comma-separated):</label>
+                <input type="text" id="new-api-key-systems" placeholder="system1,system2 or leave empty for all">
+            </div>
+            <button class="btn" onclick="createApiKey()">Create</button>
+            <button class="btn" onclick="hideCreateApiKey()">Cancel</button>
+        </div>
+    </div>
+
+    <script>
+        function refreshHealth() {
+            // Simulate health check
+            console.log('Refreshing system health...');
+        }
+
+        function showCreateApiKey() {
+            document.getElementById('api-key-modal').style.display = 'block';
+        }
+
+        function hideCreateApiKey() {
+            document.getElementById('api-key-modal').style.display = 'none';
+        }
+
+        function createApiKey() {
+            const name = document.getElementById('new-api-key-name').value;
+            const description = document.getElementById('new-api-key-description').value;
+            const systems = document.getElementById('new-api-key-systems').value;
+
+            if (!name) {
+                alert('Please enter a name for the API key');
+                return;
+            }
+
+            // TODO: Implement API key creation
+            alert(`API key "${name}" created successfully (implementation pending)`);
+            hideCreateApiKey();
+            loadApiKeys();
+        }
+
+        function loadApiKeys() {
+            // TODO: Load actual API keys from server
+            const listElement = document.getElementById('api-key-list');
+            listElement.innerHTML = '<p><em>No API keys configured</em></p>';
+        }
+
+        function cleanupDatabase() {
+            if (confirm('This will remove old records according to your retention policy. Continue?')) {
+                alert('Database cleanup started (implementation pending)');
+            }
+        }
+
+        function confirmVacuum() {
+            if (confirm('Database vacuum may take several minutes and will lock the database. Continue?')) {
+                alert('Database vacuum started (implementation pending)');
+            }
+        }
+
+        function saveConfiguration() {
+            const maxFileSize = document.getElementById('max-file-size').value;
+            const workers = document.getElementById('transcription-workers').value;
+            const logLevel = document.getElementById('log-level').value;
+
+            // TODO: Save configuration to server
+            alert('Configuration saved successfully (implementation pending)');
+        }
+
+        function restartServices() {
+            if (confirm('This will restart all services and may cause brief downtime. Continue?')) {
+                alert('Services restart initiated (implementation pending)');
+            }
+        }
+
+        function confirmShutdown() {
+            if (confirm('This will shutdown the entire system. Are you sure?')) {
+                alert('System shutdown initiated (implementation pending)');
+            }
+        }
+
+        function exportData() {
+            const format = document.getElementById('export-format').value;
+            const fromDate = document.getElementById('export-from').value;
+            const toDate = document.getElementById('export-to').value;
+
+            alert(`Exporting data to ${format} format (implementation pending)`);
+        }
+
+        function createBackup() {
+            alert('Creating system backup (implementation pending)');
+        }
+
+        // Load initial data
+        loadApiKeys();
+
+        // Update system stats periodically
+        setInterval(() => {
+            document.getElementById('uptime').textContent = 'Running';
+            document.getElementById('db-size').textContent = '< 1 GB';
+            document.getElementById('total-records').textContent = '0';
+        }, 5000);
+    </script>
+</body>
+</html>

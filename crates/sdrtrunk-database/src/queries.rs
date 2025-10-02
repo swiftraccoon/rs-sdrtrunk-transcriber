@@ -156,6 +156,38 @@ impl RadioCallQueries {
         Ok(row.get("count"))
     }
 
+    /// Find all radio calls with basic pagination (no system filter)
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the database query fails.
+    pub async fn find_all_with_filters(
+        pool: &PgPool,
+        filter: &RadioCallFilter<'_>,
+    ) -> Result<Vec<RadioCallDb>> {
+        // Use same pattern as find_by_system which works
+        let query = r"
+            SELECT * FROM radio_calls
+            ORDER BY call_timestamp DESC
+            LIMIT $1 OFFSET $2
+        ";
+
+        tracing::info!("Executing find_all_with_filters query with limit={}, offset={}", filter.limit, filter.offset);
+
+        let result = sqlx::query_as::<_, RadioCallDb>(query)
+            .bind(filter.limit)
+            .bind(filter.offset)
+            .fetch_all(pool)
+            .await
+            .map_err(|e| {
+                tracing::error!("Database query error in find_all_with_filters: {}", e);
+                Error::Database(e.to_string())
+            })?;
+
+        tracing::info!("find_all_with_filters returned {} results", result.len());
+        Ok(result)
+    }
+
     /// Update transcription status
     ///
     /// # Errors
@@ -674,11 +706,14 @@ pub async fn list_radio_calls_filtered(
     pool: &PgPool,
     filter: RadioCallFilter<'_>,
 ) -> Result<Vec<RadioCallDb>> {
+    tracing::info!("list_radio_calls_filtered called with system_id={:?}", filter.system_id);
+
     if let Some(system) = filter.system_id {
+        tracing::info!("Using find_by_system for system: {}", system);
         RadioCallQueries::find_by_system(pool, system, filter.limit, filter.offset).await
     } else {
-        // For now, just return empty - would need a proper implementation
-        Ok(vec![])
+        tracing::info!("Using find_all_with_filters (no system filter)");
+        RadioCallQueries::find_all_with_filters(pool, &filter).await
     }
 }
 
@@ -691,8 +726,8 @@ pub async fn count_radio_calls_filtered(pool: &PgPool, filter: RadioCallFilter<'
     if let Some(system) = filter.system_id {
         RadioCallQueries::count_by_system(pool, system).await
     } else {
-        // For now, return 0 - would need proper implementation
-        Ok(0)
+        // Use the existing count_radio_calls function for total count
+        count_radio_calls(pool).await
     }
 }
 

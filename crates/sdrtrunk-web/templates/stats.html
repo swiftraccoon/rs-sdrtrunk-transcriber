@@ -1,0 +1,210 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SDRTrunk Transcriber - Statistics</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 0; padding: 20px; background: #f5f5f5; }
+        .header { background: #2c3e50; color: white; padding: 1rem; margin: -20px -20px 20px; }
+        .nav { display: flex; gap: 1rem; margin-top: 1rem; }
+        .nav a { color: white; text-decoration: none; padding: 0.5rem 1rem; border-radius: 4px; }
+        .nav a:hover { background: #34495e; }
+        .nav a.active { background: #34495e; }
+        .stats-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 1rem; }
+        .card { background: white; padding: 1.5rem; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+        .card h3 { margin-top: 0; color: #2c3e50; }
+        .metric { display: flex; justify-content: space-between; margin: 0.5rem 0; padding: 0.5rem; background: #ecf0f1; border-radius: 4px; }
+        .metric-value { font-weight: bold; color: #2c3e50; }
+        .chart-placeholder { height: 200px; background: #ecf0f1; border-radius: 4px; display: flex; align-items: center; justify-content: center; color: #7f8c8d; margin: 1rem 0; }
+        .top-list { list-style: none; padding: 0; }
+        .top-list li { display: flex; justify-content: space-between; padding: 0.5rem; margin: 0.25rem 0; background: #ecf0f1; border-radius: 4px; }
+        .filters { background: white; padding: 1rem; border-radius: 8px; margin-bottom: 1rem; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+        .filter-row { display: flex; gap: 1rem; align-items: center; flex-wrap: wrap; }
+        .filter-row select { padding: 0.5rem; border: 1px solid #ddd; border-radius: 4px; }
+        .btn { background: #3498db; color: white; border: none; padding: 0.5rem 1rem; border-radius: 4px; cursor: pointer; }
+        .btn:hover { background: #2980b9; }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>SDRTrunk Transcriber</h1>
+        <nav class="nav">
+            <a href="/">Dashboard</a>
+            <a href="/calls">Calls</a>
+            <a href="/stats" class="active">Statistics</a>
+            <a href="/admin">Admin</a>
+        </nav>
+    </div>
+
+    <h2>System Statistics</h2>
+
+    <div class="filters">
+        <div class="filter-row">
+            <label>Time Period:</label>
+            <select id="time-period">
+                <option value="today">Today</option>
+                <option value="week">This Week</option>
+                <option value="month" selected>This Month</option>
+                <option value="year">This Year</option>
+            </select>
+            <label>System:</label>
+            <select id="system-filter">
+                <option value="">All Systems</option>
+            </select>
+            <button class="btn" onclick="updateStats()">Update</button>
+        </div>
+    </div>
+
+    <div class="stats-grid">
+        <div class="card">
+            <h3>Call Volume</h3>
+            <div class="chart-placeholder">
+                Call volume chart will appear here
+            </div>
+            <div class="metric">
+                <span>Total Calls:</span>
+                <span class="metric-value" id="total-calls">0</span>
+            </div>
+            <div class="metric">
+                <span>Average per Day:</span>
+                <span class="metric-value" id="avg-per-day">0</span>
+            </div>
+        </div>
+
+        <div class="card">
+            <h3>Transcription Success Rate</h3>
+            <div class="chart-placeholder">
+                Success rate chart will appear here
+            </div>
+            <div class="metric">
+                <span>Success Rate:</span>
+                <span class="metric-value" id="success-rate">100%</span>
+            </div>
+            <div class="metric">
+                <span>Failed Transcriptions:</span>
+                <span class="metric-value" id="failed-count">0</span>
+            </div>
+        </div>
+
+        <div class="card">
+            <h3>Top Systems</h3>
+            <ul class="top-list" id="top-systems">
+                <li><span>No systems configured</span><span>0</span></li>
+            </ul>
+        </div>
+
+        <div class="card">
+            <h3>Top Talkgroups</h3>
+            <ul class="top-list" id="top-talkgroups">
+                <li><span>No talkgroups found</span><span>0</span></li>
+            </ul>
+        </div>
+
+        <div class="card">
+            <h3>System Activity</h3>
+            <div class="chart-placeholder">
+                Activity timeline will appear here
+            </div>
+            <div class="metric">
+                <span>Peak Hour:</span>
+                <span class="metric-value" id="peak-hour">N/A</span>
+            </div>
+            <div class="metric">
+                <span>Busiest Day:</span>
+                <span class="metric-value" id="busiest-day">N/A</span>
+            </div>
+        </div>
+
+        <div class="card">
+            <h3>Performance Metrics</h3>
+            <div class="metric">
+                <span>Avg Transcription Time:</span>
+                <span class="metric-value" id="avg-transcription-time">N/A</span>
+            </div>
+            <div class="metric">
+                <span>API Response Time:</span>
+                <span class="metric-value" id="api-response-time">< 50ms</span>
+            </div>
+            <div class="metric">
+                <span>Queue Depth:</span>
+                <span class="metric-value" id="queue-depth">0</span>
+            </div>
+            <div class="metric">
+                <span>Storage Used:</span>
+                <span class="metric-value" id="storage-used">0 GB</span>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        async function updateStats() {
+            const period = document.getElementById('time-period').value;
+            const system = document.getElementById('system-filter').value;
+
+            try {
+                const params = new URLSearchParams();
+                if (period) params.append('period', period);
+                if (system) params.append('system_id', system);
+
+                const response = await fetch(`/api/stats/global?${params}`);
+                const data = await response.json();
+
+                if (data.error) {
+                    console.error('Stats API Error:', data.message);
+                    displayErrorStats();
+                    return;
+                }
+
+                displayStats(data);
+            } catch (error) {
+                console.error('Failed to fetch statistics:', error);
+                displayErrorStats();
+            }
+        }
+
+        function displayErrorStats() {
+            document.getElementById('total-calls').textContent = 'Error';
+            document.getElementById('avg-per-day').textContent = 'Error';
+            document.getElementById('success-rate').textContent = 'Error';
+            document.getElementById('failed-count').textContent = 'Error';
+        }
+
+        function displayStats(data) {
+            // Update UI with stats data
+            document.getElementById('total-calls').textContent = data.total_calls || 0;
+            document.getElementById('avg-per-day').textContent = data.avg_per_day || 0;
+            document.getElementById('success-rate').textContent = (data.success_rate || 100) + '%';
+            document.getElementById('failed-count').textContent = data.failed_count || 0;
+            document.getElementById('peak-hour').textContent = data.peak_hour || 'N/A';
+            document.getElementById('busiest-day').textContent = data.busiest_day || 'N/A';
+            document.getElementById('avg-transcription-time').textContent = data.avg_transcription_time || 'N/A';
+            document.getElementById('queue-depth').textContent = data.queue_depth || 0;
+            document.getElementById('storage-used').textContent = (data.storage_used || 0) + ' GB';
+
+            // Update top lists
+            updateTopList('top-systems', data.top_systems || []);
+            updateTopList('top-talkgroups', data.top_talkgroups || []);
+        }
+
+        function updateTopList(elementId, items) {
+            const list = document.getElementById(elementId);
+            if (items.length === 0) {
+                list.innerHTML = '<li><span>No data available</span><span>0</span></li>';
+                return;
+            }
+
+            const html = items.map(item =>
+                `<li><span>${item.name}</span><span>${item.count}</span></li>`
+            ).join('');
+            list.innerHTML = html;
+        }
+
+        // Load initial stats
+        updateStats();
+
+        // Auto-refresh every 60 seconds
+        setInterval(updateStats, 60000);
+    </script>
+</body>
+</html>

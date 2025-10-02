@@ -9,6 +9,10 @@ pub struct Config {
     /// Server configuration
     pub server: ServerConfig,
 
+    /// Web server configuration
+    #[serde(default)]
+    pub webserver: WebServerConfig,
+
     /// Database configuration
     pub database: DatabaseConfig,
 
@@ -47,6 +51,32 @@ pub struct ServerConfig {
     /// Number of worker threads
     #[serde(default = "default_workers")]
     pub workers: usize,
+}
+
+/// Web server configuration
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct WebServerConfig {
+    /// Host to bind web interface to
+    #[serde(default = "default_web_host")]
+    pub host: String,
+
+    /// Port for web interface
+    #[serde(default = "default_web_port")]
+    pub port: u16,
+
+    /// Number of web server workers
+    #[serde(default = "default_web_workers")]
+    pub workers: usize,
+}
+
+impl Default for WebServerConfig {
+    fn default() -> Self {
+        Self {
+            host: default_web_host(),
+            port: default_web_port(),
+            workers: default_web_workers(),
+        }
+    }
 }
 
 /// Database configuration
@@ -164,6 +194,18 @@ fn default_workers() -> usize {
     std::thread::available_parallelism()
         .map(std::num::NonZero::get)
         .unwrap_or(4)
+}
+
+fn default_web_host() -> String {
+    "127.0.0.1".to_string()
+}
+
+const fn default_web_port() -> u16 {
+    8081 // Different from API port 8080
+}
+
+fn default_web_workers() -> usize {
+    2
 }
 
 const fn default_max_connections() -> u32 {
@@ -293,6 +335,11 @@ impl Default for Config {
                 host: default_host(),
                 port: default_port(),
                 workers: default_workers(),
+            },
+            webserver: WebServerConfig {
+                host: default_web_host(),
+                port: default_web_port(),
+                workers: default_web_workers(),
             },
             database: DatabaseConfig {
                 url: database_url,

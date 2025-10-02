@@ -1,0 +1,350 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SDRTrunk Transcriber - Radio Calls</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 0; padding: 20px; background: #f5f5f5; }
+        .header { background: #2c3e50; color: white; padding: 1rem; margin: -20px -20px 20px; }
+        .nav { display: flex; gap: 1rem; margin-top: 1rem; }
+        .nav a { color: white; text-decoration: none; padding: 0.5rem 1rem; border-radius: 4px; }
+        .nav a:hover { background: #34495e; }
+        .nav a.active { background: #34495e; }
+        .search-filters { background: white; padding: 1rem; border-radius: 8px; margin-bottom: 1rem; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+        .filter-row { display: flex; gap: 1rem; margin-bottom: 1rem; flex-wrap: wrap; }
+        .filter-row input, .filter-row select { padding: 0.5rem; border: 1px solid #ddd; border-radius: 4px; }
+        .filter-row input[type="text"] { flex: 1; min-width: 200px; }
+        .btn { background: #3498db; color: white; border: none; padding: 0.5rem 1rem; border-radius: 4px; cursor: pointer; }
+        .btn:hover { background: #2980b9; }
+        .call-list { background: white; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+        .call-list-header { display: grid; grid-template-columns: 1.5fr 1fr 1fr 1fr 1fr 2fr 1fr; gap: 1rem; padding: 1rem; background: #ecf0f1; font-weight: bold; border-bottom: 1px solid #ddd; }
+        .call-row { display: grid; grid-template-columns: 1.5fr 1fr 1fr 1fr 1fr 2fr 1fr; gap: 1rem; padding: 1rem; border-bottom: 1px solid #eee; }
+        .call-row:hover { background: #f8f9fa; }
+        .status-pending { color: #f39c12; }
+        .status-completed { color: #27ae60; }
+        .status-failed { color: #e74c3c; }
+        .pagination { text-align: center; margin: 1rem; }
+        .empty-state { text-align: center; padding: 2rem; color: #7f8c8d; }
+        .transcription-text { max-width: 300px; font-family: monospace; font-size: 0.9em; white-space: pre-wrap; overflow: hidden; text-overflow: ellipsis; }
+        .confidence-score { font-size: 0.8em; padding: 2px 6px; border-radius: 3px; color: white; font-weight: bold; }
+        .confidence-high { background: #27ae60; }
+        .confidence-medium { background: #f39c12; }
+        .confidence-low { background: #e74c3c; }
+        .speaker-label { background: #3498db; color: white; padding: 1px 4px; border-radius: 2px; font-size: 0.7em; margin-right: 4px; }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>SDRTrunk Transcriber</h1>
+        <nav class="nav">
+            <a href="/">Dashboard</a>
+            <a href="/calls" class="active">Calls</a>
+            <a href="/stats">Statistics</a>
+            <a href="/admin">Admin</a>
+        </nav>
+    </div>
+
+    <h2>Radio Calls</h2>
+
+    <div class="search-filters">
+        <div class="filter-row">
+            <input type="text" placeholder="Search transcriptions..." id="search-input">
+            <select id="system-filter">
+                <option value="">All Systems</option>
+            </select>
+            <select id="talkgroup-filter">
+                <option value="">All Talkgroups</option>
+            </select>
+        </div>
+        <div class="filter-row">
+            <input type="date" id="from-date" placeholder="From date">
+            <input type="date" id="to-date" placeholder="To date">
+            <select id="status-filter">
+                <option value="">All Status</option>
+                <option value="pending">Pending</option>
+                <option value="processing">Processing</option>
+                <option value="completed">Completed</option>
+                <option value="failed">Failed</option>
+            </select>
+            <button class="btn" onclick="searchCalls()">Search</button>
+        </div>
+    </div>
+
+    <div class="call-list">
+        <div class="call-list-header">
+            <div>Time</div>
+            <div>System</div>
+            <div>Talkgroup</div>
+            <div>Duration</div>
+            <div>Status</div>
+            <div>Transcription</div>
+            <div>Actions</div>
+        </div>
+        <div id="call-list-body">
+            <div class="empty-state">
+                <p>No calls found. Upload some audio files or configure SDRTrunk to start receiving calls.</p>
+            </div>
+        </div>
+    </div>
+
+    <div class="pagination">
+        <button class="btn" disabled>Previous</button>
+        <span>Page 1 of 1</span>
+        <button class="btn" disabled>Next</button>
+    </div>
+
+    <script>
+        async function searchCalls() {
+            const search = document.getElementById('search-input').value;
+            const system = document.getElementById('system-filter').value;
+            const talkgroup = document.getElementById('talkgroup-filter').value;
+            const fromDate = document.getElementById('from-date').value;
+            const toDate = document.getElementById('to-date').value;
+            const status = document.getElementById('status-filter').value;
+
+            try {
+                const params = new URLSearchParams();
+                if (search) params.append('search', search);
+                if (system) params.append('system_id', system);
+                if (talkgroup) params.append('talkgroup_id', talkgroup);
+                if (fromDate) params.append('from_date', fromDate);
+                if (toDate) params.append('to_date', toDate);
+                if (status) params.append('status', status);
+
+                const response = await fetch(`/api/calls?${params}`);
+                const data = await response.json();
+
+                if (data.error) {
+                    console.error('API Error:', data.message);
+                    document.getElementById('call-list-body').innerHTML =
+                        `<div class="empty-state"><p>Error: ${data.message}</p></div>`;
+                    return;
+                }
+
+                displayCalls(data.calls || data || []);
+
+                // Update total count in the diagnostic info
+                const totalElement = document.getElementById('total-in-db');
+                if (totalElement) {
+                    totalElement.textContent = data.total || '0';
+                }
+            } catch (error) {
+                console.error('Failed to fetch calls:', error);
+            }
+        }
+
+        function displayCalls(calls) {
+            const listBody = document.getElementById('call-list-body');
+            if (!calls || calls.length === 0) {
+                listBody.innerHTML = `
+                    <div class="empty-state">
+                        <p>No calls found matching your search criteria.</p>
+                        <p>Try adjusting your filters or search terms.</p>
+                    </div>
+                `;
+                return;
+            }
+
+            const html = calls.map(call => {
+                const timestamp = new Date(call.call_timestamp).toLocaleString();
+                const system = call.system_label || call.system_id || 'Unknown';
+                const talkgroup = call.talkgroup_label || (call.talkgroup_id ? `TG${call.talkgroup_id}` : 'Unknown');
+                const duration = call.duration_seconds ? `${parseFloat(call.duration_seconds).toFixed(1)}s` : 'N/A';
+                const status = call.transcription_status || 'pending';
+
+                // Format transcription content
+                const transcriptionContent = formatTranscriptionContent(call);
+
+                return `
+                <div class="call-row">
+                    <div>${timestamp}</div>
+                    <div title="${call.system_id}">${system}</div>
+                    <div title="ID: ${call.talkgroup_id || 'N/A'}">${talkgroup}</div>
+                    <div>${duration}</div>
+                    <div class="status-${status}">${status}</div>
+                    <div class="transcription-text">${transcriptionContent}</div>
+                    <div>
+                        ${call.audio_filename ? `<button class="btn" onclick="playCall('${call.id}')">Play</button>` : ''}
+                        <button class="btn" onclick="viewCallDetails('${call.id}')">Details</button>
+                    </div>
+                </div>
+            `}).join('');
+
+            listBody.innerHTML = html;
+        }
+
+        function playCall(callId) {
+            // Create audio element and play the call
+            const audioUrl = `/api/calls/${callId}/audio`;
+
+            // Remove existing audio players
+            const existingPlayer = document.getElementById('current-audio-player');
+            if (existingPlayer) {
+                existingPlayer.remove();
+            }
+
+            // Create new audio player
+            const audioPlayer = document.createElement('audio');
+            audioPlayer.id = 'current-audio-player';
+            audioPlayer.controls = true;
+            audioPlayer.autoplay = true;
+            audioPlayer.style.cssText = 'position: fixed; bottom: 20px; right: 20px; z-index: 1000; background: white; box-shadow: 0 4px 8px rgba(0,0,0,0.2); border-radius: 8px;';
+
+            audioPlayer.src = audioUrl;
+
+            audioPlayer.onerror = function() {
+                alert('Audio file not available or not yet implemented');
+                audioPlayer.remove();
+            };
+
+            audioPlayer.onended = function() {
+                setTimeout(() => audioPlayer.remove(), 2000);
+            };
+
+            // Add close button
+            const closeBtn = document.createElement('button');
+            closeBtn.textContent = '✕';
+            closeBtn.style.cssText = 'position: absolute; top: -5px; right: -5px; background: #e74c3c; color: white; border: none; border-radius: 50%; width: 20px; height: 20px; cursor: pointer; font-size: 12px;';
+            closeBtn.onclick = () => audioPlayer.remove();
+
+            const wrapper = document.createElement('div');
+            wrapper.style.position = 'relative';
+            wrapper.appendChild(audioPlayer);
+            wrapper.appendChild(closeBtn);
+
+            document.body.appendChild(wrapper);
+        }
+
+        function formatTranscriptionContent(call) {
+            if (!call.transcription_text) {
+                if (call.transcription_status === 'processing') {
+                    return '<span style="color: #f39c12; font-style: italic;">Processing...</span>';
+                } else if (call.transcription_status === 'failed') {
+                    return '<span style="color: #e74c3c; font-style: italic;">Failed</span>';
+                } else {
+                    return '<span style="color: #7f8c8d; font-style: italic;">Pending</span>';
+                }
+            }
+
+            // Parse speaker labels and format text
+            let text = call.transcription_text;
+
+            // Extract speaker labels (SPEAKER_00:, SPEAKER_01:, etc.)
+            text = text.replace(/SPEAKER_(\d+):/g, '<span class="speaker-label">Speaker $1</span>');
+
+            // Truncate long transcriptions
+            if (text.length > 100) {
+                text = text.substring(0, 100) + `... <a href="#" onclick="viewCallDetails('${call.id}'); return false;" style="color: #3498db;">more</a>`;
+            }
+
+            // Add confidence score if available
+            let confidenceHtml = '';
+            if (call.transcription_confidence) {
+                const confidence = parseFloat(call.transcription_confidence);
+                let confidenceClass = 'confidence-low';
+                if (confidence > 0.8) confidenceClass = 'confidence-high';
+                else if (confidence > 0.5) confidenceClass = 'confidence-medium';
+
+                confidenceHtml = `<br><span class="confidence-score ${confidenceClass}">${Math.round(confidence * 100)}%</span>`;
+            }
+
+            return text + confidenceHtml;
+        }
+
+        function viewCallDetails(callId) {
+            // Create modal with full transcription details
+            showTranscriptionModal(callId);
+        }
+
+        function showTranscriptionModal(callId) {
+            // Find the call data
+            const call = window.currentCalls?.find(c => c.id === callId);
+            if (!call) {
+                alert('Call data not available');
+                return;
+            }
+
+            const modal = document.createElement('div');
+            modal.style.cssText = 'position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); z-index: 1000; display: flex; align-items: center; justify-content: center;';
+
+            const content = document.createElement('div');
+            content.style.cssText = 'background: white; padding: 2rem; border-radius: 8px; max-width: 600px; max-height: 80vh; overflow-y: auto;';
+
+            content.innerHTML = `
+                <h3>Call Transcription Details</h3>
+                <p><strong>Time:</strong> ${new Date(call.call_timestamp).toLocaleString()}</p>
+                <p><strong>System:</strong> ${call.system_label || call.system_id}</p>
+                <p><strong>Talkgroup:</strong> ${call.talkgroup_label || 'Unknown'}</p>
+                <p><strong>Duration:</strong> ${call.duration_seconds ? parseFloat(call.duration_seconds).toFixed(1) + 's' : 'N/A'}</p>
+                <p><strong>Status:</strong> ${call.transcription_status || 'pending'}</p>
+                ${call.transcription_confidence ? `<p><strong>Confidence:</strong> ${Math.round(parseFloat(call.transcription_confidence) * 100)}%</p>` : ''}
+                <hr>
+                <h4>Transcription:</h4>
+                <div style="background: #f8f9fa; padding: 1rem; border-radius: 4px; font-family: monospace; white-space: pre-wrap;">
+                    ${call.transcription_text ? call.transcription_text.replace(/SPEAKER_(\d+):/g, '<strong style="color: #3498db;">Speaker $1:</strong>') : '<em>No transcription available</em>'}
+                </div>
+                <button onclick="this.parentElement.parentElement.remove()" style="margin-top: 1rem; background: #e74c3c; color: white; border: none; padding: 0.5rem 1rem; border-radius: 4px; cursor: pointer;">Close</button>
+            `;
+
+            modal.appendChild(content);
+            document.body.appendChild(modal);
+
+            // Close on backdrop click
+            modal.onclick = (e) => {
+                if (e.target === modal) modal.remove();
+            };
+        }
+
+        // Store calls data for detail modals
+        window.currentCalls = [];
+
+        // Update the search function to include transcription and store data
+        async function searchCalls() {
+            const search = document.getElementById('search-input').value;
+            const system = document.getElementById('system-filter').value;
+            const talkgroup = document.getElementById('talkgroup-filter').value;
+            const fromDate = document.getElementById('from-date').value;
+            const toDate = document.getElementById('to-date').value;
+            const status = document.getElementById('status-filter').value;
+
+            try {
+                const params = new URLSearchParams();
+                if (search) params.append('search', search);
+                if (system) params.append('system_id', system);
+                if (talkgroup) params.append('talkgroup_id', talkgroup);
+                if (fromDate) params.append('from_date', fromDate);
+                if (toDate) params.append('to_date', toDate);
+                if (status) params.append('status', status);
+                params.append('include_transcription', 'true'); // Always include transcriptions
+
+                const response = await fetch(`/api/calls?${params}`);
+                const data = await response.json();
+
+                if (data.error) {
+                    console.error('API Error:', data.message);
+                    document.getElementById('call-list-body').innerHTML =
+                        `<div class="empty-state"><p>Error: ${data.message}</p></div>`;
+                    return;
+                }
+
+                // Store data for detail modals
+                window.currentCalls = data.calls || [];
+
+                displayCalls(data.calls || data || []);
+
+                // Update total count in the diagnostic info
+                const totalElement = document.getElementById('total-in-db');
+                if (totalElement) {
+                    totalElement.textContent = data.total || '0';
+                }
+            } catch (error) {
+                console.error('Failed to fetch calls:', error);
+            }
+        }
+
+        // Load calls on page load
+        searchCalls();
+    </script>
+</body>
+</html>

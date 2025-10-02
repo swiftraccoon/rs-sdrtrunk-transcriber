@@ -1,0 +1,71 @@
+[package]
+name = "sdrtrunk-web"
+version.workspace = true
+authors.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+description = "Web interface for SDRTrunk transcriber"
+repository = "https://github.com/swiftraccoon/rs-sdrtrunk-transcriber"
+readme = "../../README.md"
+keywords = ["sdr", "web", "leptos", "frontend", "transcription"]
+categories = ["web-programming", "multimedia"]
+
+[[bin]]
+name = "sdrtrunk-web-server"
+path = "src/main.rs"
+
+[dependencies]
+# Internal dependencies
+sdrtrunk-core = { path = "../sdrtrunk-core" }
+sdrtrunk-api = { path = "../sdrtrunk-api" }
+sdrtrunk-database = { path = "../sdrtrunk-database" }
+
+# Web framework - Leptos with server-side rendering
+leptos = { workspace = true }
+leptos_axum = { workspace = true }
+leptos_router = { workspace = true }
+
+# Server framework (reuse existing Axum)
+axum = { workspace = true }
+tower = { workspace = true }
+tower-http = { workspace = true }
+
+# Async runtime
+tokio = { workspace = true }
+
+# Serialization (reuse workspace)
+serde = { workspace = true }
+serde_json = { workspace = true }
+
+# WebSocket support (minimal addition)
+tokio-tungstenite = { workspace = true }
+futures-util = { workspace = true }
+
+# HTTP client for API calls
+reqwest = { workspace = true }
+
+# Logging (reuse workspace)
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
+
+# Date/time (reuse workspace)
+chrono = { workspace = true }
+
+# UUID (reuse workspace)
+uuid = { workspace = true }
+
+# Decimal precision (reuse workspace)
+rust_decimal = { workspace = true }
+
+# URL encoding
+urlencoding = { workspace = true }
+
+[dev-dependencies]
+tokio-test = "0.4"
+
+[features]
+default = ["csr"]
+csr = ["leptos/csr"]
+ssr = ["leptos/ssr"]
+hydrate = ["leptos/hydrate"]

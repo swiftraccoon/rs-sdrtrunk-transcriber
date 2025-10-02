@@ -1,0 +1,232 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SDRTrunk Transcriber - Dashboard</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 0; padding: 20px; background: #f5f5f5; }
+        .header { background: #2c3e50; color: white; padding: 1rem; margin: -20px -20px 20px; }
+        .nav { display: flex; gap: 1rem; margin-top: 1rem; }
+        .nav a { color: white; text-decoration: none; padding: 0.5rem 1rem; border-radius: 4px; }
+        .nav a:hover { background: #34495e; }
+        .dashboard-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 1rem; }
+        .card { background: white; padding: 1.5rem; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+        .card h3 { margin-top: 0; color: #2c3e50; }
+        .status { padding: 1rem; background: #e8f5e8; border-left: 4px solid #27ae60; margin: 1rem 0; }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>SDRTrunk Transcriber</h1>
+        <nav class="nav">
+            <a href="/">Dashboard</a>
+            <a href="/calls">Calls</a>
+            <a href="/stats">Statistics</a>
+            <a href="/admin">Admin</a>
+        </nav>
+    </div>
+
+    <h2>Live Dashboard</h2>
+
+    <div class="status">
+        <strong>System Status:</strong> Online |
+        <strong>API:</strong> Available |
+        <strong>WhisperX:</strong> Connected
+    </div>
+
+    <div class="dashboard-grid">
+        <div class="card">
+            <h3>Live Calls</h3>
+            <p>Monitoring radio calls in real-time...</p>
+            <div id="live-calls">
+                <p><em>No active calls</em></p>
+            </div>
+        </div>
+
+        <div class="card">
+            <h3>Recent Activity</h3>
+            <p>Latest transcription activity:</p>
+            <ul>
+                <li>System ready for calls</li>
+                <li>Database connected</li>
+                <li>API server running</li>
+            </ul>
+        </div>
+
+        <div class="card">
+            <h3>Quick Stats</h3>
+            <p><strong>Calls Today:</strong> <span id="calls-today">Loading...</span></p>
+            <p><strong>Total Calls:</strong> <span id="total-calls">Loading...</span></p>
+            <p><strong>Success Rate:</strong> <span id="success-rate">Loading...</span></p>
+            <p><strong>Queue Depth:</strong> <span id="queue-depth">Loading...</span></p>
+        </div>
+
+        <div class="card">
+            <h3>System Health</h3>
+            <p><strong>CPU:</strong> Normal</p>
+            <p><strong>Memory:</strong> Normal</p>
+            <p><strong>Storage:</strong> Normal</p>
+            <p><strong>Network:</strong> Connected</p>
+        </div>
+    </div>
+
+    <script>
+        async function loadDashboardData() {
+            try {
+                // Load recent calls with transcription data
+                const callsResponse = await fetch('/api/calls?limit=5&sort=desc&include_transcription=true');
+                const callsData = await callsResponse.json();
+                console.log('Calls API response:', callsData);
+
+                // Load global statistics
+                const statsResponse = await fetch('/api/stats/global');
+                const statsData = await statsResponse.json();
+                console.log('Stats API response:', statsData);
+
+                // Check for errors in responses
+                if (callsData.error) {
+                    console.error('Calls API error:', callsData.message);
+                } else {
+                    updateLiveCalls(callsData.calls || []);
+                }
+
+                if (statsData.error) {
+                    console.error('Stats API error:', statsData.message);
+                    document.getElementById('calls-today').textContent = 'Error';
+                    document.getElementById('total-calls').textContent = 'Error';
+                    document.getElementById('success-rate').textContent = 'Error';
+                    document.getElementById('queue-depth').textContent = 'Error';
+                } else {
+                    updateQuickStats(statsData);
+                    // Update the database total in the live calls section
+                    const dbTotalElement = document.getElementById('db-total');
+                    if (dbTotalElement) {
+                        dbTotalElement.textContent = statsData.total_calls || '0';
+                    }
+                }
+
+            } catch (error) {
+                console.error('Failed to load dashboard data:', error);
+                document.getElementById('calls-today').textContent = 'Network Error';
+                document.getElementById('total-calls').textContent = 'Network Error';
+                document.getElementById('success-rate').textContent = 'Network Error';
+                document.getElementById('queue-depth').textContent = 'Network Error';
+            }
+        }
+
+        function updateQuickStats(stats) {
+            // Handle actual GlobalStatsResponse structure
+            document.getElementById('calls-today').textContent = stats.calls_last_24h || '0';
+            document.getElementById('total-calls').textContent = stats.total_calls || '0';
+            document.getElementById('success-rate').textContent = '100%'; // No success rate in API yet
+            document.getElementById('queue-depth').textContent = '0'; // No queue depth in API yet
+        }
+
+        function updateLiveCalls(calls) {
+            const liveFeed = document.getElementById('live-calls');
+
+            if (!calls || calls.length === 0) {
+                liveFeed.innerHTML = '<p><em>No recent calls</em></p>';
+                return;
+            }
+
+            // If we have calls, display them properly with transcriptions
+            const html = calls.slice(0, 5).map(call => {
+                const time = new Date(call.call_timestamp).toLocaleTimeString();
+                const system = call.system_label || call.system_id || 'Unknown';
+                const talkgroup = call.talkgroup_label || (call.talkgroup_id ? `TG${call.talkgroup_id}` : 'Unknown');
+                const status = call.transcription_status || 'pending';
+
+                // Format transcription content for dashboard
+                let transcriptionHtml = '';
+                if (call.transcription_text) {
+                    let text = call.transcription_text;
+                    // Remove speaker labels for compact display
+                    text = text.replace(/SPEAKER_\d+:\s*/g, '');
+                    // Truncate for dashboard
+                    if (text.length > 60) {
+                        text = text.substring(0, 60) + '...';
+                    }
+                    transcriptionHtml = `<br><small style="font-style: italic; color: #555;">"${text}"</small>`;
+                }
+
+                // Add confidence indicator
+                let confidenceHtml = '';
+                if (call.transcription_confidence) {
+                    const confidence = parseFloat(call.transcription_confidence);
+                    const percentage = Math.round(confidence * 100);
+                    confidenceHtml = ` (${percentage}%)`;
+                }
+
+                return `
+                    <div style="margin: 0.5rem 0; padding: 0.5rem; background: #f8f9fa; border-radius: 4px; border-left: 3px solid ${status === 'completed' ? '#27ae60' : '#f39c12'};">
+                        <strong>${time}</strong> - ${system} / ${talkgroup}
+                        <br><small>Status: ${status}${confidenceHtml}</small>
+                        ${transcriptionHtml}
+                    </div>
+                `;
+            }).join('');
+
+            liveFeed.innerHTML = html;
+        }
+
+        // WebSocket connection for real-time updates
+        let ws = null;
+
+        function connectWebSocket() {
+            const protocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
+            const wsUrl = `${protocol}//${location.host}/ws`;
+
+            ws = new WebSocket(wsUrl);
+
+            ws.onopen = function() {
+                console.log('WebSocket connected');
+            };
+
+            ws.onmessage = function(event) {
+                try {
+                    const message = JSON.parse(event.data);
+                    handleWebSocketMessage(message);
+                } catch (error) {
+                    console.error('Failed to parse WebSocket message:', error);
+                }
+            };
+
+            ws.onclose = function() {
+                console.log('WebSocket disconnected, attempting to reconnect...');
+                setTimeout(connectWebSocket, 5000);
+            };
+
+            ws.onerror = function(error) {
+                console.error('WebSocket error:', error);
+            };
+        }
+
+        function handleWebSocketMessage(message) {
+            if (message.type === 'calls_update') {
+                // Update live calls with real-time data
+                updateLiveCalls(message.data.calls || []);
+
+                // Update quick stats if available
+                if (message.data.total !== undefined) {
+                    document.getElementById('total-calls').textContent = message.data.total;
+                }
+            }
+        }
+
+        // Load initial dashboard data
+        loadDashboardData();
+
+        // Connect WebSocket for real-time updates
+        connectWebSocket();
+
+        // Fallback: Auto-refresh every 30 seconds if WebSocket fails
+        setInterval(() => {
+            if (!ws || ws.readyState !== WebSocket.OPEN) {
+                loadDashboardData();
+            }
+        }, 30000);
+    </script>
+</body>
+</html>
