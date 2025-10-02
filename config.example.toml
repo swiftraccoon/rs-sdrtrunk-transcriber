@@ -57,37 +57,34 @@ language = "en"                       # Language code (e.g., en, es, fr)
 # This token is required for speaker diarization models
 hf_token = "YOUR_HF_TOKEN_HERE"
 
-# Core decoding parameters (advanced - defaults are usually fine)
-beam_size = 10                        # Number of beams in beam search (when temperature=0)
-best_of = 10                          # Number of candidates when sampling with non-zero temperature
-patience = 10                         # Beam decoding patience factor
-length_penalty = 1.0                  # Token length penalty coefficient (alpha)
-repetition_penalty = 2.1              # Penalty for repeated tokens
-temperature = 0.0                     # Sampling temperature (0 = greedy, >0 = sampling)
-compression_ratio_threshold = 2.4     # Threshold for compression ratio heuristic
-log_prob_threshold = -1.0             # Average log probability threshold
-no_speech_threshold = 0.6             # Probability threshold for no speech detection
-condition_on_previous_text = false    # Use previous text as context
-prompt_reset_on_temperature = 0.5     # Temperature threshold to reset prompt
-
-# Voice Activity Detection (VAD) parameters
+# VAD (Voice Activity Detection)
+vad_filter = true                     # Enable Silero VAD for speech detection
 vad_onset = 0.5                       # Speech start detection threshold
-vad_offset = 0.363                    # Speech end detection threshold
-
-# Word timestamp parameters
-word_timestamps = false               # Extract word-level timestamps
-prepend_punctuations = "\"'"¿([{-"    # Punctuations to attach to next word
-append_punctuations = "\"'.。,，!！?？:：")]}、"  # Punctuations to attach to previous word
-
-# Chunking parameters for long audio
+vad_offset = 0.35                     # Speech end detection threshold
 chunk_length = 30                     # Length of audio chunks in seconds
 
-# Post-processing parameters
-hallucination_silence_threshold = 0.0 # Silence threshold for hallucination detection (disabled)
-clip_timestamps = 0.0                 # Comma-separated timestamp segments to clip
-max_new_tokens = 0                    # Maximum new tokens per chunk (0 = no limit)
-max_words_per_line = 0               # Maximum words per subtitle line (0 = no limit)
+# Decoding + fallback parameters
+temperature = [0.0, 0.2, 0.4]         # Temperature fallback array (starts greedy, falls back to sampling)
+beam_size = 5                         # Number of beams in beam search
+best_of = 5                           # Number of candidates when sampling
+patience = 1.2                        # Beam decoding patience factor
+length_penalty = 1.0                  # Token length penalty coefficient
+repetition_penalty = 1.2              # Penalty for repeated tokens
+no_repeat_ngram_size = 3              # Prevent n-gram repetition
 
-# Speaker diarization parameters
-min_speakers = 0                      # Minimum number of speakers (0 = auto)
-max_speakers = 0                      # Maximum number of speakers (0 = auto)
+# Hallucination/silence guards
+compression_ratio_threshold = 2.0     # Threshold for compression ratio heuristic
+logprob_threshold = -1.0              # Average log probability threshold
+no_speech_threshold = 0.5             # Probability threshold for no speech detection
+
+# Context & timestamps
+condition_on_previous_text = false    # Use previous text as context
+without_timestamps = true             # WhisperX-native mode; alignment supplies word times
+suppress_blank = true                 # Suppress blank outputs
+suppress_tokens = "-1"                # Tokens to suppress (-1 = default list)
+
+# Diarization (speaker identification)
+diarization = true                    # Enable speaker diarization
+min_speakers = 2                      # Minimum number of speakers (tighten if you know the channel)
+max_speakers = 3                      # Maximum number of speakers
+word_timestamps = true                # Extract word-level timestamps
