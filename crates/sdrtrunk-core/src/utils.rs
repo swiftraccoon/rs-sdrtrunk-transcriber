@@ -504,4 +504,100 @@ mod tests {
         let result = parse_sdrtrunk_filename(no_radio).unwrap();
         assert_eq!(result.radio_id, 0); // Should default to 0
     }
+
+    // Property-based tests
+    mod proptests {
+        use super::*;
+
+        proptest::proptest! {
+            /// Property: Valid SDRTrunk filenames should always parse successfully
+            #[test]
+            fn valid_sdrtrunk_filename_always_parses(
+                year in 2000u32..2100,
+                month in 1u32..13,
+                day in 1u32..29,  // Safe for all months
+                hour in 0u32..24,
+                minute in 0u32..60,
+                second in 0u32..60,
+                talkgroup in 1u32..100000,
+                radio_id in 1000000u32..10000000,
+                system in "[a-zA-Z_]{1,20}",
+            ) {
+                let filename = format!(
+                    "{:04}{:02}{:02}_{:02}{:02}{:02}_{}_TG{}_FROM_{}.mp3",
+                    year, month, day, hour, minute, second, system, talkgroup, radio_id
+                );
+
+                let result = parse_sdrtrunk_filename(&filename);
+                prop_assert!(result.is_ok(), "Valid filename should parse: {}", filename);
+
+                let file_data = result.unwrap();
+                prop_assert_eq!(file_data.talkgroup_id, i32::try_from(talkgroup).unwrap());
+                prop_assert_eq!(file_data.radio_id, i32::try_from(radio_id).unwrap());
+                prop_assert_eq!(file_data.filename, filename);
+            }
+
+            /// Property: System IDs with valid characters should validate
+            #[test]
+            fn valid_system_id_characters_always_validate(
+                id in "[a-zA-Z0-9_-]{1,50}"
+            ) {
+                prop_assert!(validate_system_id(&id), "Valid system ID should pass: {}", id);
+            }
+
+            /// Property: System IDs over 50 chars should fail
+            #[test]
+            fn system_id_over_length_always_fails(
+                extra_chars in 1usize..100,
+            ) {
+                let id = "a".repeat(51 + extra_chars);
+                prop_assert!(!validate_system_id(&id), "Overlong system ID should fail: length={}", id.len());
+            }
+
+            /// Property: File extension validation is case-insensitive
+            #[test]
+            fn file_extension_validation_is_case_insensitive(
+                ext in "[mM][pP]3",
+            ) {
+                let filename = format!("test.{}", ext);
+                let allowed = vec!["mp3".to_string()];
+                prop_assert!(validate_file_extension(&filename, &allowed));
+            }
+
+            /// Property: Sanitized filenames contain only safe characters
+            #[test]
+            fn sanitized_filenames_only_safe_chars(
+                filename in "\\PC{1,100}",  // Any Unicode string
+            ) {
+                let sanitized = sanitize_filename(&filename);
+                prop_assert!(
+                    sanitized.chars().all(|c| c.is_alphanumeric() || c == '.' || c == '_' || c == '-'),
+                    "Sanitized filename should only contain safe chars: {}",
+                    sanitized
+                );
+            }
+
+            /// Property: Sanitization is idempotent
+            #[test]
+            fn sanitization_is_idempotent(
+                filename in "\\PC{1,50}",
+            ) {
+                let once = sanitize_filename(&filename);
+                let twice = sanitize_filename(&once);
+                prop_assert_eq!(once, twice, "Sanitization should be idempotent");
+            }
+
+            /// Property: Sanitized filenames never empty if input not empty
+            #[test]
+            fn sanitized_filenames_preserve_non_emptiness(
+                filename in "\\PC{1,50}",
+            ) {
+                let sanitized = sanitize_filename(&filename);
+                // If original has any safe chars, sanitized should not be empty
+                if filename.chars().any(|c| c.is_alphanumeric() || c == '.' || c == '_' || c == '-') {
+                    prop_assert!(!sanitized.is_empty(), "Sanitized should not be empty when input has safe chars");
+                }
+            }
+        }
+    }
 }
