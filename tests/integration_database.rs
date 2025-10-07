@@ -885,6 +885,163 @@ async fn test_database_performance() -> Result<()> {
     assert!(insert_duration < tokio::time::Duration::from_secs(10), "Batch insert took too long");
     assert!(query_duration < tokio::time::Duration::from_millis(100), "Indexed query took too long");
     assert!(range_query_duration < tokio::time::Duration::from_secs(1), "Range query took too long");
-    
+
+    Ok(())
+}
+
+/// Negative test: Insert with duplicate primary key should fail
+#[tokio::test]
+async fn test_insert_with_duplicate_id_returns_error() -> Result<()> {
+    init_test_logging();
+
+    let test_db = TestDatabase::new().await?;
+    let db = test_db.database();
+
+    let call_id = Uuid::new_v4();
+    let now = chrono::Utc::now();
+
+    // First insert should succeed
+    let insert_sql = r#"
+        INSERT INTO radio_calls (
+            id, created_at, call_timestamp, system_id, system_label,
+            talkgroup_id, transcription_status
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7)
+    "#;
+
+    sqlx::query(insert_sql)
+        .bind(call_id)
+        .bind(now)
+        .bind(now)
+        .bind("test_system")
+        .bind("Test System")
+        .bind(12345i32)
+        .bind("none")
+        .execute(db.pool())
+        .await?;
+
+    // Second insert with same ID should fail
+    let result = sqlx::query(insert_sql)
+        .bind(call_id) // Same ID - should fail
+        .bind(now)
+        .bind(now)
+        .bind("test_system2")
+        .bind("Test System 2")
+        .bind(54321i32)
+        .bind("none")
+        .execute(db.pool())
+        .await;
+
+    assert!(result.is_err(), "Duplicate ID insert should fail");
+
+    // Verify error is a database constraint violation
+    if let Err(e) = result {
+        let error_msg = e.to_string();
+        assert!(
+            error_msg.contains("duplicate") || error_msg.contains("unique") || error_msg.contains("constraint"),
+            "Error should indicate constraint violation: {}",
+            error_msg
+        );
+    }
+
+    Ok(())
+}
+
+/// Negative test: Query with invalid UUID string should fail
+#[tokio::test]
+async fn test_query_with_invalid_uuid_returns_error() -> Result<()> {
+    init_test_logging();
+
+    let test_db = TestDatabase::new().await?;
+    let db = test_db.database();
+
+    // Try to bind an invalid UUID string
+    let result = sqlx::query("SELECT * FROM radio_calls WHERE id = $1")
+        .bind("not-a-valid-uuid")
+        .fetch_optional(db.pool())
+        .await;
+
+    assert!(result.is_err(), "Invalid UUID should cause error");
+
+    Ok(())
+}
+
+/// Negative test: Connection pool exhaustion and recovery
+#[tokio::test]
+async fn test_connection_pool_exhaustion_recovery() -> Result<()> {
+    init_test_logging();
+
+    let test_db = TestDatabase::new().await?;
+    let db = test_db.database();
+
+    // Get pool stats
+    let pool_size = db.pool().size();
+    println!("Pool size: {}", pool_size);
+
+    // Pool should handle concurrent requests gracefully
+    let mut handles = vec![];
+    for i in 0..20 {
+        let pool = db.pool().clone();
+        let handle = tokio::spawn(async move {
+            let result = sqlx::query("SELECT $1 as num")
+                .bind(i)
+                .fetch_one(&pool)
+                .await;
+            result.is_ok()
+        });
+        handles.push(handle);
+    }
+
+    // All requests should complete (may queue if pool is full)
+    let results = futures::future::join_all(handles).await;
+    let successful = results.iter().filter(|r| r.is_ok() && r.as_ref().unwrap()).count();
+
+    assert_eq!(successful, 20, "All requests should eventually succeed despite pool limits");
+
+    Ok(())
+}
+
+/// Negative test: Transaction rollback on error
+#[tokio::test]
+async fn test_transaction_rollback_on_error() -> Result<()> {
+    init_test_logging();
+
+    let test_db = TestDatabase::new().await?;
+    let db = test_db.database();
+
+    let call_id = Uuid::new_v4();
+    let now = chrono::Utc::now();
+
+    // Start transaction
+    let mut tx = db.pool().begin().await?;
+
+    // Insert a record
+    sqlx::query(
+        r#"
+        INSERT INTO radio_calls (
+            id, created_at, call_timestamp, system_id,
+            talkgroup_id, transcription_status
+        ) VALUES ($1, $2, $3, $4, $5, $6)
+        "#
+    )
+    .bind(call_id)
+    .bind(now)
+    .bind(now)
+    .bind("test_system")
+    .bind(12345i32)
+    .bind("pending")
+    .execute(&mut *tx)
+    .await?;
+
+    // Explicitly rollback
+    tx.rollback().await?;
+
+    // Verify record was NOT inserted (transaction rolled back)
+    let result = sqlx::query("SELECT * FROM radio_calls WHERE id = $1")
+        .bind(call_id)
+        .fetch_optional(db.pool())
+        .await?;
+
+    assert!(result.is_none(), "Record should not exist after rollback");
+
     Ok(())
 }
