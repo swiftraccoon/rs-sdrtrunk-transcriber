@@ -81,48 +81,29 @@ async fn test_database_migrations() -> Result<()> {
 #[tokio::test]
 async fn test_radio_call_database_operations() -> Result<()> {
     init_test_logging();
-    
+
     let test_db = TestDatabase::new().await?;
     let db = test_db.database();
-    
-    // Create table for testing (since migrations might not include all tables yet)
-    let create_table_sql = r#"
-        CREATE TABLE IF NOT EXISTS radio_calls (
-            id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-            created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-            call_timestamp TIMESTAMPTZ NOT NULL,
-            system_id VARCHAR(50) NOT NULL,
-            system_label VARCHAR(255),
-            frequency BIGINT,
-            talkgroup_id INTEGER,
-            talkgroup_label VARCHAR(255),
-            talkgroup_group VARCHAR(255),
-            talkgroup_tag VARCHAR(255),
-            source_radio_id INTEGER,
-            talker_alias VARCHAR(255),
-            audio_filename VARCHAR(255),
-            audio_file_path TEXT,
-            audio_size_bytes BIGINT,
-            audio_content_type VARCHAR(100),
-            duration_seconds DECIMAL(10, 3),
-            transcription_text TEXT,
-            transcription_confidence DECIMAL(5, 4),
-            transcription_language VARCHAR(10),
-            transcription_status VARCHAR(20),
-            speaker_segments JSONB,
-            speaker_count INTEGER,
-            patches TEXT,
-            frequencies TEXT,
-            sources TEXT,
-            upload_ip INET,
-            upload_timestamp TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-            upload_api_key_id VARCHAR(255)
-        )
+
+    // TestDatabase::new() already runs migrations from
+    // crates/sdrtrunk-database/migrations/
+    // Verify the migration created the radio_calls table correctly
+    let table_check_sql = r#"
+        SELECT table_name
+        FROM information_schema.tables
+        WHERE table_schema = 'public' AND table_name = 'radio_calls'
     "#;
-    
-    sqlx::query(create_table_sql)
-        .execute(db.pool())
+
+    let row = sqlx::query(table_check_sql)
+        .fetch_one(db.pool())
         .await?;
+
+    let table_name: String = row.get("table_name");
+    assert_eq!(
+        table_name,
+        "radio_calls",
+        "Migration should create radio_calls table"
+    );
     
     // Test INSERT
     let call_id = Uuid::new_v4();
