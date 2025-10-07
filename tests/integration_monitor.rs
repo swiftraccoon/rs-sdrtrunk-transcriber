@@ -548,6 +548,234 @@ async fn test_monitoring_cleanup() -> Result<()> {
     
     assert_eq!(removed_files, 1); // Should remove the empty file
     assert!(total_size_after < total_size_before);
-    
+
+    Ok(())
+}
+
+/// Concurrent test: Multiple files arriving simultaneously
+#[tokio::test]
+async fn test_concurrent_file_arrivals_all_detected() -> Result<()> {
+    init_test_logging();
+
+    let temp_dir = tempfile::tempdir()?;
+    let watch_dir = temp_dir.path().join("watch");
+    std::fs::create_dir_all(&watch_dir)?;
+
+    // Create 10 files concurrently
+    let mut handles = Vec::new();
+    for i in 0..10 {
+        let watch_path = watch_dir.clone();
+        let handle = tokio::spawn(async move {
+            let filename = format!("concurrent_file_{i}.mp3");
+            let file_path = watch_path.join(&filename);
+
+            // Create a small MP3 file
+            let content = vec![
+                0xFF, 0xFB, 0x90, 0x00, // MP3 frame header
+                0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+            ];
+
+            tokio::fs::write(&file_path, content).await?;
+
+            Ok::<_, std::io::Error>(filename)
+        });
+
+        handles.push(handle);
+    }
+
+    // Wait for all files to be created
+    let mut created_files = Vec::new();
+    for handle in handles {
+        let filename = handle.await.expect("Task should complete")?;
+        created_files.push(filename);
+    }
+
+    // Give file system a moment to settle
+    tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
+
+    // Verify all 10 files exist
+    let mut found_files = Vec::new();
+    for entry in std::fs::read_dir(&watch_dir)? {
+        let entry = entry?;
+        if entry.path().extension().and_then(|s| s.to_str()) == Some("mp3") {
+            if let Some(filename) = entry.path().file_name() {
+                found_files.push(filename.to_string_lossy().to_string());
+            }
+        }
+    }
+
+    assert_eq!(
+        found_files.len(),
+        10,
+        "Should have found all 10 files. Found: {:?}",
+        found_files
+    );
+
+    // Verify no duplicates
+    let unique_count = found_files.iter().collect::<std::collections::HashSet<_>>().len();
+    assert_eq!(unique_count, 10, "Should have 10 unique files, found {unique_count}");
+
+    Ok(())
+}
+
+/// Concurrent test: Multiple readers on the same file
+#[tokio::test]
+async fn test_concurrent_file_reads_consistent() -> Result<()> {
+    init_test_logging();
+
+    let temp_dir = tempfile::tempdir()?;
+    let file_path = temp_dir.path().join("shared_file.mp3");
+
+    // Create a test file with known content
+    let test_content = b"Test MP3 content for concurrent reading";
+    std::fs::write(&file_path, test_content)?;
+
+    // Spawn multiple concurrent readers
+    let mut handles = Vec::new();
+    for i in 0..10 {
+        let path = file_path.clone();
+        let handle = tokio::spawn(async move {
+            // Read the file
+            let content = tokio::fs::read(&path).await?;
+
+            Ok::<_, std::io::Error>((i, content))
+        });
+
+        handles.push(handle);
+    }
+
+    // Wait for all reads to complete
+    for handle in handles {
+        let (reader_id, content) = handle.await.expect("Task should complete")?;
+
+        // Verify content is correct
+        assert_eq!(
+            content,
+            test_content,
+            "Reader {reader_id} got incorrect content"
+        );
+    }
+
+    Ok(())
+}
+
+/// Concurrent test: Concurrent directory operations
+#[tokio::test]
+async fn test_concurrent_directory_operations() -> Result<()> {
+    init_test_logging();
+
+    let temp_dir = tempfile::tempdir()?;
+    let base_dir = temp_dir.path();
+
+    // Spawn tasks to create directories concurrently
+    let mut handles = Vec::new();
+    for i in 0..10 {
+        let base = base_dir.to_path_buf();
+        let handle = tokio::spawn(async move {
+            let dir_name = format!("concurrent_dir_{i}");
+            let dir_path = base.join(&dir_name);
+
+            // Create directory
+            tokio::fs::create_dir_all(&dir_path).await?;
+
+            // Create a file in the directory
+            let file_path = dir_path.join("test.mp3");
+            tokio::fs::write(&file_path, b"test").await?;
+
+            Ok::<_, std::io::Error>(dir_name)
+        });
+
+        handles.push(handle);
+    }
+
+    // Wait for all operations to complete
+    let mut created_dirs = Vec::new();
+    for handle in handles {
+        let dir_name = handle.await.expect("Task should complete")?;
+        created_dirs.push(dir_name);
+    }
+
+    // Verify all directories were created
+    assert_eq!(created_dirs.len(), 10);
+
+    // Verify all directories exist and contain the test file
+    for dir_name in &created_dirs {
+        let dir_path = base_dir.join(dir_name);
+        assert!(dir_path.exists(), "Directory {dir_name} should exist");
+        assert!(dir_path.is_dir(), "Path {dir_name} should be a directory");
+
+        let file_path = dir_path.join("test.mp3");
+        assert!(file_path.exists(), "File in {dir_name} should exist");
+    }
+
+    Ok(())
+}
+
+/// Concurrent test: File move operations don't lose files
+#[tokio::test]
+async fn test_concurrent_file_moves_no_loss() -> Result<()> {
+    init_test_logging();
+
+    let temp_dir = tempfile::tempdir()?;
+    let source_dir = temp_dir.path().join("source");
+    let dest_dir = temp_dir.path().join("dest");
+
+    std::fs::create_dir_all(&source_dir)?;
+    std::fs::create_dir_all(&dest_dir)?;
+
+    // Create 10 files in source directory
+    for i in 0..10 {
+        let filename = format!("move_test_{i}.mp3");
+        let file_path = source_dir.join(&filename);
+        std::fs::write(&file_path, b"test content")?;
+    }
+
+    // Move files concurrently
+    let mut handles = Vec::new();
+    for i in 0..10 {
+        let src_dir = source_dir.clone();
+        let dst_dir = dest_dir.clone();
+
+        let handle = tokio::spawn(async move {
+            let filename = format!("move_test_{i}.mp3");
+            let src_path = src_dir.join(&filename);
+            let dst_path = dst_dir.join(&filename);
+
+            // Move the file
+            tokio::fs::rename(&src_path, &dst_path).await?;
+
+            Ok::<_, std::io::Error>(filename)
+        });
+
+        handles.push(handle);
+    }
+
+    // Wait for all moves to complete
+    let mut moved_files = Vec::new();
+    for handle in handles {
+        let filename = handle.await.expect("Task should complete")?;
+        moved_files.push(filename);
+    }
+
+    // Verify all files were moved
+    assert_eq!(moved_files.len(), 10);
+
+    // Count files in source (should be 0)
+    let source_count = std::fs::read_dir(&source_dir)?.count();
+    assert_eq!(source_count, 0, "Source directory should be empty");
+
+    // Count files in dest (should be 10)
+    let dest_count = std::fs::read_dir(&dest_dir)?.count();
+    assert_eq!(dest_count, 10, "Destination directory should have 10 files");
+
+    // Verify all files exist in destination
+    for filename in &moved_files {
+        let file_path = dest_dir.join(filename);
+        assert!(
+            file_path.exists(),
+            "File {filename} should exist in destination"
+        );
+    }
+
     Ok(())
 }
