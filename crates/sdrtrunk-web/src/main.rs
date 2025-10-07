@@ -1,10 +1,12 @@
 //! Web server for SDRTrunk transcriber interface
+#![forbid(unsafe_code)]
 
 use sdrtrunk_web::build_app;
 use std::net::{IpAddr, SocketAddr};
 use tracing::{info, warn};
 
 #[tokio::main]
+#[allow(clippy::type_complexity)]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Initialize tracing
     tracing_subscriber::fmt::init();

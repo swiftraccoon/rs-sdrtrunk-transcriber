@@ -555,8 +555,8 @@ pub async fn handle_call_upload(
     };
 
     // Trigger transcription if enabled
-    if let Some(ref transcription_config) = state.config.transcription {
-        if transcription_config.enabled {
+    if let Some(ref transcription_config) = state.config.transcription
+        && transcription_config.enabled {
             if let Some(ref transcription_pool) = state.transcription_pool {
                 let transcription_request = sdrtrunk_transcriber::TranscriptionRequest::new(
                     call_id,
@@ -602,7 +602,6 @@ pub async fn handle_call_upload(
                 warn!("Transcription enabled but no worker pool initialized");
             }
         }
-    }
 
     // Update system statistics (non-critical, log errors but don't fail)
     if let Err(e) =
@@ -751,6 +750,7 @@ struct CallMetadata {
 
 #[cfg(test)]
 #[allow(clippy::missing_panics_doc)]
+#[allow(clippy::field_reassign_with_default)]
 mod tests {
     use super::*;
     use axum::http::StatusCode;
@@ -1808,8 +1808,7 @@ mod tests {
         // Test pre-epoch timestamp conversion (before 1970-01-01)
         let pre_epoch_timestamp = -86400i64; // 1969-12-31
         let datetime = DateTime::from_timestamp(pre_epoch_timestamp, 0);
-        if datetime.is_some() {
-            let dt = datetime.unwrap();
+        if let Some(dt) = datetime {
             assert!(dt.year() == 1969);
         }
 

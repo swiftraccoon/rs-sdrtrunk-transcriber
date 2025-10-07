@@ -1,6 +1,6 @@
 //! WebSocket client for real-time updates
 
-use futures_util::{SinkExt, StreamExt};
+use futures_util::StreamExt;
 use sdrtrunk_core::{Error, Result};
 use serde::{Deserialize, Serialize};
 use tokio_tungstenite::{connect_async, tungstenite::Message};
@@ -18,6 +18,11 @@ impl WebSocketClient {
     }
 
     /// Connect to the WebSocket server and handle messages
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the WebSocket connection fails or if message handling encounters an error.
+    #[allow(clippy::cognitive_complexity)]
     pub async fn connect(&self) -> Result<()> {
         info!("Connecting to WebSocket at {}", self.url);
 
@@ -25,14 +30,14 @@ impl WebSocketClient {
             .await
             .map_err(|e| Error::Other(format!("WebSocket connection failed: {e}")))?;
 
-        let (mut write, mut read) = ws_stream.split();
+        let (_write, mut read) = ws_stream.split();
 
         // TODO: Implement message handling loop
         while let Some(msg) = read.next().await {
             match msg {
                 Ok(Message::Text(text)) => {
                     if let Ok(update) = serde_json::from_str::<WebSocketMessage>(&text) {
-                        self.handle_message(update).await;
+                        Self::handle_message(update);
                     } else {
                         warn!("Failed to parse WebSocket message: {}", text);
                     }
@@ -53,7 +58,7 @@ impl WebSocketClient {
     }
 
     /// Handle incoming WebSocket messages
-    async fn handle_message(&self, message: WebSocketMessage) {
+    fn handle_message(message: WebSocketMessage) {
         match message {
             WebSocketMessage::CallUpdate { call_id, status } => {
                 info!("Received call update: {} -> {:?}", call_id, status);
@@ -78,18 +83,23 @@ pub enum WebSocketMessage {
     /// Call status update
     #[serde(rename = "call_update")]
     CallUpdate {
+        /// UUID of the call being updated
         call_id: uuid::Uuid,
+        /// New status of the call
         status: CallStatus,
     },
     /// New call received
     #[serde(rename = "new_call")]
     NewCall {
+        /// Call data for the new call
         call: CallData,
     },
     /// System status update
     #[serde(rename = "system_status")]
     SystemStatus {
+        /// ID of the system being updated
         system_id: String,
+        /// New status of the system
         status: SystemStatus,
     },
 }
@@ -110,9 +120,13 @@ pub enum CallStatus {
 /// Call data for WebSocket messages
 #[derive(Debug, Serialize, Deserialize)]
 pub struct CallData {
+    /// Unique identifier for the call
     pub id: uuid::Uuid,
+    /// System ID this call belongs to
     pub system_id: String,
+    /// Optional talkgroup ID
     pub talkgroup_id: Option<i32>,
+    /// Timestamp when the call was received
     pub timestamp: chrono::DateTime<chrono::Utc>,
 }
 

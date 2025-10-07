@@ -1,6 +1,6 @@
-//! SDRTrunk Web Interface
+//! `SDRTrunk` Web Interface
 //!
-//! A modern web interface for monitoring and managing SDRTrunk radio call transcriptions.
+//! A modern web interface for monitoring and managing `SDRTrunk` radio call transcriptions.
 
 #![forbid(unsafe_code)]
 #![warn(

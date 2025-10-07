@@ -25,8 +25,8 @@ pub async fn build_router(config: Config, pool: PgPool) -> Result<Router> {
     let mut app_state = AppState::new(config.clone(), pool.clone())?;
 
     // Initialize transcription service if enabled
-    if let Some(ref transcription_config) = config.transcription {
-        if transcription_config.enabled {
+    if let Some(ref transcription_config) = config.transcription
+        && transcription_config.enabled {
             // Initialize the appropriate transcription service
             let mut service_instance = if transcription_config.service == "whisperx" {
                 Box::new(sdrtrunk_transcriber::WhisperXService::new(
@@ -108,7 +108,6 @@ pub async fn build_router(config: Config, pool: PgPool) -> Result<Router> {
             // Set the pool in app state
             app_state.set_transcription_pool(worker_pool_arc);
         }
-    }
 
     let state = Arc::new(app_state);
 
@@ -324,7 +323,6 @@ mod tests {
         let _build_test_router_exists = build_test_router;
 
         // If we got here, the functions exist and are accessible
-        assert!(true);
     }
 
     #[test]

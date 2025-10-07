@@ -1,4 +1,5 @@
 //! Comprehensive benchmarks for sdrtrunk-core functionality
+#![forbid(unsafe_code)]
 
 use criterion::{BenchmarkId, Criterion, Throughput, criterion_group, criterion_main};
 use sdrtrunk_core::utils::{

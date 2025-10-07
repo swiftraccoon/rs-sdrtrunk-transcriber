@@ -14,6 +14,7 @@ pub struct AppState {
 
 impl AppState {
     /// Create new application state
+    #[must_use]
     pub fn new(config: Config) -> Self {
         let api_base_url = format!("http://{}:{}", config.server.host, config.server.port);
         let api_client = ApiClient::new(api_base_url);

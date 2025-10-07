@@ -1,4 +1,4 @@
-//! HTTP client for communicating with the SDRTrunk API
+//! HTTP client for communicating with the `SDRTrunk` API
 
 use reqwest::Client;
 use sdrtrunk_core::Result;
@@ -7,7 +7,7 @@ use sdrtrunk_core::Result;
 pub use sdrtrunk_api::handlers::calls::{CallSummary, ListCallsQuery, ListCallsResponse, PaginationInfo};
 pub use sdrtrunk_api::handlers::stats::{GlobalStatsResponse, SystemSummary, ActivityPeriod, StorageStats};
 
-/// API client for making HTTP requests to the SDRTrunk API server
+/// API client for making HTTP requests to the `SDRTrunk` API server
 #[derive(Clone)]
 pub struct ApiClient {
     client: Client,
@@ -26,12 +26,17 @@ impl ApiClient {
     }
 
     /// Set the API key for authentication
+    #[must_use]
     pub fn with_api_key(mut self, api_key: impl Into<String>) -> Self {
         self.api_key = Some(api_key.into());
         self
     }
 
     /// Get a list of radio calls with optional filtering
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the HTTP request fails or the response cannot be parsed.
     pub async fn get_calls(&self, params: &ListCallsQuery) -> Result<serde_json::Value> {
         let mut url = format!("{}/api/calls", self.base_url);
 
@@ -39,16 +44,16 @@ impl ApiClient {
         let mut query_params = Vec::new();
 
         if let Some(limit) = params.limit {
-            query_params.push(format!("limit={}", limit));
+            query_params.push(format!("limit={limit}"));
         }
         if let Some(offset) = params.offset {
-            query_params.push(format!("offset={}", offset));
+            query_params.push(format!("offset={offset}"));
         }
         if let Some(ref system_id) = params.system_id {
             query_params.push(format!("system_id={}", urlencoding::encode(system_id)));
         }
         if let Some(talkgroup_id) = params.talkgroup_id {
-            query_params.push(format!("talkgroup_id={}", talkgroup_id));
+            query_params.push(format!("talkgroup_id={talkgroup_id}"));
         }
         if let Some(ref from_date) = params.from_date {
             query_params.push(format!("from_date={}", urlencoding::encode(&from_date.to_rfc3339())));
@@ -60,11 +65,12 @@ impl ApiClient {
             query_params.push(format!("sort={}", urlencoding::encode(sort)));
         }
         if let Some(include_transcription) = params.include_transcription {
-            query_params.push(format!("include_transcription={}", include_transcription));
+            query_params.push(format!("include_transcription={include_transcription}"));
         }
 
         if !query_params.is_empty() {
-            url.push_str(&format!("?{}", query_params.join("&")));
+            url.push('?');
+            url.push_str(&query_params.join("&"));
         }
 
         let mut request = self.client.get(&url);
@@ -90,6 +96,10 @@ impl ApiClient {
     }
 
     /// Get system statistics
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the HTTP request fails or the response cannot be parsed.
     pub async fn get_system_stats(&self, system_id: &str) -> Result<serde_json::Value> {
         let url = format!("{}/api/systems/{}/stats", self.base_url, system_id);
 
@@ -116,6 +126,10 @@ impl ApiClient {
     }
 
     /// Get details for a specific call
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the HTTP request fails or the response cannot be parsed.
     pub async fn get_call_details(&self, call_id: uuid::Uuid) -> Result<serde_json::Value> {
         let url = format!("{}/api/calls/{}", self.base_url, call_id);
 
@@ -142,6 +156,10 @@ impl ApiClient {
     }
 
     /// Get global statistics
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the HTTP request fails or the response cannot be parsed.
     pub async fn get_global_stats(&self) -> Result<serde_json::Value> {
         let url = format!("{}/api/stats/global", self.base_url);
 

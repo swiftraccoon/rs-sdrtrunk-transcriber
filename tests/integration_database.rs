@@ -1,4 +1,5 @@
 //! Integration tests for sdrtrunk-database functionality
+#![forbid(unsafe_code)]
 
 mod common;
 

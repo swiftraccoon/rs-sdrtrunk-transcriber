@@ -204,7 +204,7 @@ const fn default_web_port() -> u16 {
     8081 // Different from API port 8080
 }
 
-fn default_web_workers() -> usize {
+const fn default_web_workers() -> usize {
     2
 }
 
@@ -708,6 +708,7 @@ mod tests {
                 port: 9090,
                 workers: 8,
             },
+            webserver: WebServerConfig::default(),
             database: DatabaseConfig {
                 url: "postgresql://user:pass@db.example.com:5432/sdrtrunk_prod".to_string(),
                 max_connections: 200,

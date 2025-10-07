@@ -1,4 +1,5 @@
 //! Comprehensive benchmarks for the sdrtrunk-monitor functionality
+#![forbid(unsafe_code)]
 #![allow(clippy::semicolon_if_nothing_returned)]
 #![allow(clippy::cast_possible_truncation)]
 #![allow(clippy::cast_possible_wrap)]

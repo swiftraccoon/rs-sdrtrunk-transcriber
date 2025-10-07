@@ -275,3 +275,4 @@ docker-compose.override.yml
 CLAUDE.md
 coverage.lcov
 final_lcov.info
+llm

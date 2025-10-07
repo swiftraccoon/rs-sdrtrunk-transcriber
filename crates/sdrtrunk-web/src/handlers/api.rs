@@ -3,7 +3,7 @@
 use axum::{
     extract::{Path, Query, State, WebSocketUpgrade},
     response::{Json, Response},
-    http::{StatusCode, header},
+    http::StatusCode,
 };
 use axum::extract::ws::{WebSocket, Message};
 use futures_util::{SinkExt, StreamExt};
@@ -38,7 +38,7 @@ pub async fn api_global_stats(
     State(state): State<Arc<AppState>>,
 ) -> Json<serde_json::Value> {
     match state.api_client.get_global_stats().await {
-        Ok(stats) => Json(stats),
+        Ok(global_stats) => Json(global_stats),
         Err(e) => {
             error!("Failed to fetch global stats from API: {}", e);
             Json(serde_json::json!({
@@ -61,6 +61,7 @@ pub async fn websocket_handler(
 }
 
 /// Handle WebSocket connection for real-time updates
+#[allow(clippy::cognitive_complexity)]
 async fn websocket_connection(socket: WebSocket, state: Arc<AppState>) {
     let (mut sender, mut receiver) = socket.split();
 
@@ -102,12 +103,11 @@ async fn websocket_connection(socket: WebSocket, state: Arc<AppState>) {
             msg = receiver.next() => {
                 match msg {
                     Some(Ok(Message::Close(_))) => break,
-                    Some(Ok(Message::Pong(_))) => continue,
                     Some(Err(e)) => {
                         error!("WebSocket error: {}", e);
                         break;
                     }
-                    _ => continue,
+                    _ => {},
                 }
             }
         }
@@ -117,6 +117,12 @@ async fn websocket_connection(socket: WebSocket, state: Arc<AppState>) {
 }
 
 /// Serve audio file for a specific call
+///
+/// # Errors
+///
+/// Returns `StatusCode::NOT_FOUND` if the call or audio file is not found.
+/// Returns `StatusCode::INTERNAL_SERVER_ERROR` for database or file system errors.
+#[allow(clippy::cognitive_complexity)]
 pub async fn serve_audio(
     Path(call_id): Path<uuid::Uuid>,
     State(state): State<Arc<AppState>>,
