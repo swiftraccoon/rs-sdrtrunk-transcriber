@@ -66,8 +66,8 @@ async fn websocket_connection(socket: WebSocket, state: Arc<AppState>) {
 
     info!("WebSocket connection established");
 
-    // Send periodic updates
-    let mut update_interval = interval(Duration::from_secs(5));
+    // Send periodic updates (frontend handles incrementally to avoid scroll resets)
+    let mut update_interval = interval(Duration::from_secs(10));
     let mut ping_interval = interval(Duration::from_secs(30));
 
     loop {
@@ -75,7 +75,7 @@ async fn websocket_connection(socket: WebSocket, state: Arc<AppState>) {
             _ = update_interval.tick() => {
                 // Fetch latest calls and send update
                 if let Ok(calls) = state.api_client.get_calls(&ListCallsQuery {
-                    limit: Some(5),
+                    limit: Some(20),
                     offset: Some(0),
                     system_id: None,
                     talkgroup_id: None,
