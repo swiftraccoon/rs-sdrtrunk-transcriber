@@ -1,16 +1,16 @@
 //! API proxy handlers for communicating with backend
 
+use crate::{api_client::ListCallsQuery, state::AppState};
+use axum::extract::ws::{Message, WebSocket};
 use axum::{
     extract::{Path, Query, State, WebSocketUpgrade},
-    response::{Json, Response},
     http::StatusCode,
+    response::{Json, Response},
 };
-use axum::extract::ws::{WebSocket, Message};
 use futures_util::{SinkExt, StreamExt};
 use std::sync::Arc;
-use tokio::time::{interval, Duration};
+use tokio::time::{Duration, interval};
 use tracing::{error, info, warn};
-use crate::{api_client::ListCallsQuery, state::AppState};
 
 /// API endpoint for calls data - proxies to backend API
 pub async fn api_calls(
@@ -34,9 +34,7 @@ pub async fn api_calls(
 }
 
 /// API endpoint for global statistics
-pub async fn api_global_stats(
-    State(state): State<Arc<AppState>>,
-) -> Json<serde_json::Value> {
+pub async fn api_global_stats(State(state): State<Arc<AppState>>) -> Json<serde_json::Value> {
     match state.api_client.get_global_stats().await {
         Ok(global_stats) => Json(global_stats),
         Err(e) => {
@@ -74,12 +72,13 @@ async fn websocket_connection(socket: WebSocket, state: Arc<AppState>) {
     loop {
         tokio::select! {
             _ = update_interval.tick() => {
-                // Fetch latest calls and send update
+                // Fetch latest calls and send update (only completed transcriptions)
                 if let Ok(calls) = state.api_client.get_calls(&ListCallsQuery {
                     limit: Some(20),
                     offset: Some(0),
                     system_id: None,
                     talkgroup_id: None,
+                    transcription_status: Some("completed".to_string()),
                     from_date: None,
                     to_date: None,
                     sort: Some("desc".to_string()),
@@ -139,7 +138,8 @@ pub async fn serve_audio(
     };
 
     // Extract audio file path
-    let audio_filename = call_data.get("audio_filename")
+    let audio_filename = call_data
+        .get("audio_filename")
         .and_then(|f| f.as_str())
         .ok_or_else(|| {
             warn!("No audio filename for call {}", call_id);
@@ -160,11 +160,10 @@ pub async fn serve_audio(
     }
 
     // Read and serve the file
-    let file_contents = tokio::fs::read(&audio_path).await
-        .map_err(|e| {
-            error!("Failed to read audio file {:?}: {}", audio_path, e);
-            StatusCode::INTERNAL_SERVER_ERROR
-        })?;
+    let file_contents = tokio::fs::read(&audio_path).await.map_err(|e| {
+        error!("Failed to read audio file {:?}: {}", audio_path, e);
+        StatusCode::INTERNAL_SERVER_ERROR
+    })?;
 
     // Build response with proper headers
     let response = Response::builder()

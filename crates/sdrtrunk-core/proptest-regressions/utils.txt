@@ -1,0 +1,7 @@
+# Seeds for failure cases proptest has generated in the past. It is
+# automatically read and these particular cases re-run before any
+# novel cases are generated.
+#
+# It is recommended to check this file in to source control so that
+# everyone who runs the test benefits from these saved cases.
+cc b7025a19bcabaf4fa47262cc44c5b0128fa2483f198ceb5222f57dd0a538ea6e # shrinks to year = 2000, month = 1, day = 1, hour = 0, minute = 0, second = 0, talkgroup = 1, radio_id = 1000000, system = "TG"

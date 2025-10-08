@@ -140,4 +140,3 @@ pub enum SystemStatus {
     /// System has errors
     Error(String),
 }
-

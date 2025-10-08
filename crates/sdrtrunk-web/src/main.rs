@@ -21,7 +21,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let app = build_app(config.clone());
 
     // Use configuration for web server address
-    let host: IpAddr = config.webserver.host.parse()
+    let host: IpAddr = config
+        .webserver
+        .host
+        .parse()
         .map_err(|e| format!("Invalid web server host '{}': {}", config.webserver.host, e))?;
     let addr = SocketAddr::new(host, config.webserver.port);
 

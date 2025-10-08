@@ -143,7 +143,7 @@ fn bench_queue_operations(c: &mut Criterion) {
                 id: Uuid::new_v4(),
                 path: PathBuf::from(format!("/recordings/System_TG{}_file_{}.mp3", i % 100, i)),
                 size: 100_000 + (i as u64 * 1000), // 100KB to several MB
-                priority: i32::try_from(i % 5).unwrap_or(0),  // Priority 0-4
+                priority: i32::try_from(i % 5).unwrap_or(0), // Priority 0-4
                 retry_count: u32::try_from(i % 3).unwrap_or(0),
             });
         }
@@ -352,10 +352,7 @@ fn bench_monitoring_service(c: &mut Criterion) {
             // Calculate aggregates
             let sum: f64 = metrics.iter().map(|(_, v, _)| v).sum();
             let avg = sum / metrics.len() as f64;
-            let max = metrics
-                .iter()
-                .map(|(_, v, _)| *v)
-                .fold(0.0_f64, f64::max);
+            let max = metrics.iter().map(|(_, v, _)| *v).fold(0.0_f64, f64::max);
 
             black_box((metrics.len(), avg, max))
         })

@@ -119,6 +119,7 @@ mod tests {
         let _filter = RadioCallFilter {
             system_id: None,
             talkgroup_id: None,
+            transcription_status: None,
             from_date: None,
             to_date: None,
             limit: 100,
