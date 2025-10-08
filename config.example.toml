@@ -11,6 +11,40 @@ host = "0.0.0.0"
 port = 9000
 workers = 4
 
+# ============================================================================
+# IMPORTANT: Understanding api_host vs server.host
+# ============================================================================
+# api_host specifies WHERE the web server CONNECTS to the API server
+# This is DIFFERENT from server.host (which is the API server's BIND address)
+#
+# Key concepts:
+# - BIND address (server.host):  Where a service LISTENS for connections
+# - CONNECTION address (api_host): Where a client CONNECTS to a service
+#
+# Example:
+# - server.host = "0.0.0.0" means "API server listens on ALL network interfaces"
+# - api_host = "localhost" means "web server connects to localhost"
+#
+# Why "0.0.0.0" can't be used for connections:
+# - "0.0.0.0" is a special address meaning "all interfaces" for binding
+# - You CANNOT connect TO "0.0.0.0" - it's not a valid destination
+# - To connect, you need a specific address:
+#   * "localhost" or "127.0.0.1" - same host (most common)
+#   * "192.168.1.100" - specific IP address for remote hosts
+#   * "api.example.com" - DNS name for containers/service mesh
+#
+# Environment variable override:
+# - Set API_HOST environment variable to override this value
+# - Useful for Docker, Kubernetes, or multi-host deployments
+#
+# Common deployment scenarios:
+# - Development (same host):        api_host = "localhost"
+# - Docker Compose:                 api_host = "api"  (service name)
+# - Kubernetes:                     api_host = "sdrtrunk-api-service"
+# - Remote server:                  api_host = "10.0.1.50"
+# ============================================================================
+api_host = "localhost"   # Connect to API server on localhost
+
 [database]
 # PostgreSQL connection string
 # Update with your database credentials

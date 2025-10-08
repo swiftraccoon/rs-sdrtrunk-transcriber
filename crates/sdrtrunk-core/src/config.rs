@@ -67,6 +67,15 @@ pub struct WebServerConfig {
     /// Number of web server workers
     #[serde(default = "default_web_workers")]
     pub workers: usize,
+
+    /// API server host to connect to (not the bind address)
+    /// Can be overridden with `API_HOST` environment variable
+    #[serde(default = "default_api_host")]
+    pub api_host: String,
+
+    /// API server port to connect to (defaults to server.port if not specified)
+    #[serde(default)]
+    pub api_port: Option<u16>,
 }
 
 impl Default for WebServerConfig {
@@ -75,6 +84,8 @@ impl Default for WebServerConfig {
             host: default_web_host(),
             port: default_web_port(),
             workers: default_web_workers(),
+            api_host: default_api_host(),
+            api_port: None,
         }
     }
 }
@@ -206,6 +217,10 @@ const fn default_web_port() -> u16 {
 
 const fn default_web_workers() -> usize {
     2
+}
+
+fn default_api_host() -> String {
+    "localhost".to_string()
 }
 
 const fn default_max_connections() -> u32 {
@@ -340,6 +355,8 @@ impl Default for Config {
                 host: default_web_host(),
                 port: default_web_port(),
                 workers: default_web_workers(),
+                api_host: default_api_host(),
+                api_port: None,
             },
             database: DatabaseConfig {
                 url: database_url,
