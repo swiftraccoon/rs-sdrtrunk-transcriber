@@ -213,11 +213,11 @@ fn bench_formatting_operations(c: &mut Criterion) {
 
     // Benchmark duration formatting
     let durations = vec![
-        0.0,      // 0 seconds
-        30.5,     // 30.5 seconds
-        90.0,     // 1 minute 30 seconds
-        3661.0,   // 1 hour 1 minute 1 second
-        86400.0,  // 24 hours
+        0.0,       // 0 seconds
+        30.5,      // 30.5 seconds
+        90.0,      // 1 minute 30 seconds
+        3661.0,    // 1 hour 1 minute 1 second
+        86400.0,   // 24 hours
         999_999.0, // Large duration
     ];
 

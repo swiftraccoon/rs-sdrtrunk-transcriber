@@ -275,4 +275,8 @@ docker-compose.override.yml
 CLAUDE.md
 coverage.lcov
 final_lcov.info
-llm
+llm/
+adws/
+specs/
+AGENTIC_WORKFLOWS.md
+blob.md

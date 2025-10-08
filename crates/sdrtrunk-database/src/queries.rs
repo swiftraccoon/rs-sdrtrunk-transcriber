@@ -120,20 +120,70 @@ impl RadioCallQueries {
     pub async fn find_by_system(
         pool: &PgPool,
         system_id: &str,
-        limit: i64,
-        offset: i64,
+        filter: &RadioCallFilter<'_>,
     ) -> Result<Vec<RadioCallDb>> {
-        let query = r"
-            SELECT * FROM radio_calls 
-            WHERE system_id = $1 
-            ORDER BY call_timestamp DESC 
-            LIMIT $2 OFFSET $3
-        ";
+        // Build dynamic WHERE clause starting with system_id
+        let mut conditions = vec!["system_id = $1".to_string()];
+        let mut param_count = 1;
 
-        sqlx::query_as::<_, RadioCallDb>(query)
-            .bind(system_id)
-            .bind(limit)
-            .bind(offset)
+        if filter.talkgroup_id.is_some() {
+            param_count += 1;
+            conditions.push(format!("talkgroup_id = ${param_count}"));
+        }
+
+        if filter.transcription_status.is_some() {
+            param_count += 1;
+            conditions.push(format!("transcription_status = ${param_count}"));
+
+            // If filtering for completed, also ensure transcription text exists
+            if filter.transcription_status == Some("completed") {
+                conditions.push("transcription_text IS NOT NULL".to_string());
+                conditions.push("transcription_text != ''".to_string());
+            }
+        }
+
+        if filter.from_date.is_some() {
+            param_count += 1;
+            conditions.push(format!("call_timestamp >= ${param_count}"));
+        }
+
+        if filter.to_date.is_some() {
+            param_count += 1;
+            conditions.push(format!("call_timestamp <= ${param_count}"));
+        }
+
+        let limit_param = param_count + 1;
+        let offset_param = param_count + 2;
+
+        let query = format!(
+            "SELECT * FROM radio_calls WHERE {} ORDER BY call_timestamp DESC LIMIT ${} OFFSET ${}",
+            conditions.join(" AND "),
+            limit_param,
+            offset_param
+        );
+
+        let mut query_builder = sqlx::query_as::<_, RadioCallDb>(&query);
+        query_builder = query_builder.bind(system_id);
+
+        if let Some(talkgroup_id) = filter.talkgroup_id {
+            query_builder = query_builder.bind(talkgroup_id);
+        }
+
+        if let Some(transcription_status) = filter.transcription_status {
+            query_builder = query_builder.bind(transcription_status);
+        }
+
+        if let Some(from_date) = filter.from_date {
+            query_builder = query_builder.bind(from_date);
+        }
+
+        if let Some(to_date) = filter.to_date {
+            query_builder = query_builder.bind(to_date);
+        }
+
+        query_builder
+            .bind(filter.limit)
+            .bind(filter.offset)
             .fetch_all(pool)
             .await
             .map_err(|e| Error::Database(e.to_string()))
@@ -161,20 +211,80 @@ impl RadioCallQueries {
     /// # Errors
     ///
     /// Returns an error if the database query fails.
+    #[allow(clippy::cognitive_complexity)]
     pub async fn find_all_with_filters(
         pool: &PgPool,
         filter: &RadioCallFilter<'_>,
     ) -> Result<Vec<RadioCallDb>> {
-        // Use same pattern as find_by_system which works
-        let query = r"
-            SELECT * FROM radio_calls
-            ORDER BY call_timestamp DESC
-            LIMIT $1 OFFSET $2
-        ";
+        // Build dynamic WHERE clause based on filters
+        let mut conditions = Vec::new();
+        let mut param_count = 0;
 
-        tracing::info!("Executing find_all_with_filters query with limit={}, offset={}", filter.limit, filter.offset);
+        if filter.talkgroup_id.is_some() {
+            param_count += 1;
+            conditions.push(format!("talkgroup_id = ${param_count}"));
+        }
 
-        let result = sqlx::query_as::<_, RadioCallDb>(query)
+        if filter.transcription_status.is_some() {
+            param_count += 1;
+            conditions.push(format!("transcription_status = ${param_count}"));
+
+            // If filtering for completed, also ensure transcription text exists
+            if filter.transcription_status == Some("completed") {
+                conditions.push("transcription_text IS NOT NULL".to_string());
+                conditions.push("transcription_text != ''".to_string());
+            }
+        }
+
+        if filter.from_date.is_some() {
+            param_count += 1;
+            conditions.push(format!("call_timestamp >= ${param_count}"));
+        }
+
+        if filter.to_date.is_some() {
+            param_count += 1;
+            conditions.push(format!("call_timestamp <= ${param_count}"));
+        }
+
+        let where_clause = if conditions.is_empty() {
+            String::new()
+        } else {
+            format!("WHERE {}", conditions.join(" AND "))
+        };
+
+        let limit_param = param_count + 1;
+        let offset_param = param_count + 2;
+
+        let query = format!(
+            "SELECT * FROM radio_calls {where_clause} ORDER BY call_timestamp DESC LIMIT ${limit_param} OFFSET ${offset_param}"
+        );
+
+        tracing::info!(
+            "Executing find_all_with_filters query with limit={}, offset={}, transcription_status={:?}",
+            filter.limit,
+            filter.offset,
+            filter.transcription_status
+        );
+
+        let mut query_builder = sqlx::query_as::<_, RadioCallDb>(&query);
+
+        if let Some(talkgroup_id) = filter.talkgroup_id {
+            query_builder = query_builder.bind(talkgroup_id);
+        }
+
+        if let Some(transcription_status) = filter.transcription_status {
+            query_builder = query_builder.bind(transcription_status);
+        }
+
+        if let Some(from_date) = filter.from_date {
+            query_builder = query_builder.bind(from_date);
+        }
+
+        if let Some(to_date) = filter.to_date {
+            query_builder = query_builder.bind(to_date);
+        }
+
+        let result = query_builder
             .bind(filter.limit)
             .bind(filter.offset)
             .fetch_all(pool)
@@ -609,6 +719,8 @@ pub struct RadioCallFilter<'a> {
     pub system_id: Option<&'a str>,
     /// Talkgroup ID filter
     pub talkgroup_id: Option<i32>,
+    /// Transcription status filter (pending, processing, completed, failed)
+    pub transcription_status: Option<&'a str>,
     /// Date range start
     pub from_date: Option<chrono::DateTime<chrono::Utc>>,
     /// Date range end
@@ -706,11 +818,15 @@ pub async fn list_radio_calls_filtered(
     pool: &PgPool,
     filter: RadioCallFilter<'_>,
 ) -> Result<Vec<RadioCallDb>> {
-    tracing::info!("list_radio_calls_filtered called with system_id={:?}", filter.system_id);
+    tracing::info!(
+        "list_radio_calls_filtered called with system_id={:?}, transcription_status={:?}",
+        filter.system_id,
+        filter.transcription_status
+    );
 
     if let Some(system) = filter.system_id {
         tracing::info!("Using find_by_system for system: {}", system);
-        RadioCallQueries::find_by_system(pool, system, filter.limit, filter.offset).await
+        RadioCallQueries::find_by_system(pool, system, &filter).await
     } else {
         tracing::info!("Using find_all_with_filters (no system filter)");
         RadioCallQueries::find_all_with_filters(pool, &filter).await
@@ -1289,7 +1405,16 @@ mod tests {
         };
 
         let nonexistent_system = format!("nonexistent_{}", &Uuid::new_v4().to_string()[0..8]);
-        let calls = RadioCallQueries::find_by_system(&pool, &nonexistent_system, 10, 0).await?;
+        let filter = RadioCallFilter {
+            system_id: None,
+            talkgroup_id: None,
+            transcription_status: None,
+            from_date: None,
+            to_date: None,
+            limit: 10,
+            offset: 0,
+        };
+        let calls = RadioCallQueries::find_by_system(&pool, &nonexistent_system, &filter).await?;
 
         assert!(calls.is_empty());
         Ok(())
@@ -1413,6 +1538,7 @@ mod tests {
         let filter = RadioCallFilter {
             system_id: Some("test_system"),
             talkgroup_id: Some(12345),
+            transcription_status: None,
             from_date: Some(now - chrono::Duration::hours(24)),
             to_date: Some(now),
             limit: 100,
@@ -1826,10 +1952,28 @@ mod tests {
         }
 
         // Test pagination
-        let page1 = RadioCallQueries::find_by_system(&pool, &system_id, 5, 0).await?;
+        let filter1 = RadioCallFilter {
+            system_id: None,
+            talkgroup_id: None,
+            transcription_status: None,
+            from_date: None,
+            to_date: None,
+            limit: 5,
+            offset: 0,
+        };
+        let page1 = RadioCallQueries::find_by_system(&pool, &system_id, &filter1).await?;
         assert_eq!(page1.len(), 5);
 
-        let page2 = RadioCallQueries::find_by_system(&pool, &system_id, 5, 5).await?;
+        let filter2 = RadioCallFilter {
+            system_id: None,
+            talkgroup_id: None,
+            transcription_status: None,
+            from_date: None,
+            to_date: None,
+            limit: 5,
+            offset: 5,
+        };
+        let page2 = RadioCallQueries::find_by_system(&pool, &system_id, &filter2).await?;
         assert_eq!(page2.len(), 5);
 
         // Ensure calls are ordered by timestamp DESC
@@ -2065,6 +2209,7 @@ mod tests {
         let filter = RadioCallFilter {
             system_id: Some(&system_id),
             talkgroup_id: None,
+            transcription_status: None,
             from_date: None,
             to_date: None,
             limit: 10,
@@ -2077,6 +2222,7 @@ mod tests {
         let filter_count = RadioCallFilter {
             system_id: Some(&system_id),
             talkgroup_id: None,
+            transcription_status: None,
             from_date: None,
             to_date: None,
             limit: 10,
@@ -2089,6 +2235,7 @@ mod tests {
         let empty_filter = RadioCallFilter {
             system_id: None,
             talkgroup_id: None,
+            transcription_status: None,
             from_date: None,
             to_date: None,
             limit: 10,
@@ -2102,6 +2249,7 @@ mod tests {
             RadioCallFilter {
                 system_id: None,
                 talkgroup_id: None,
+                transcription_status: None,
                 from_date: None,
                 to_date: None,
                 limit: 10,
@@ -2280,6 +2428,7 @@ mod tests {
         let filter = RadioCallFilter {
             system_id: Some("test_system"),
             talkgroup_id: Some(12345),
+            transcription_status: None,
             from_date: Some(chrono::Utc::now() - chrono::Duration::days(7)),
             to_date: Some(chrono::Utc::now()),
             limit: 50,
@@ -2415,6 +2564,7 @@ mod tests {
         let filter = RadioCallFilter {
             system_id: Some("debug_sys"),
             talkgroup_id: Some(999),
+            transcription_status: None,
             from_date: None,
             to_date: None,
             limit: 25,
@@ -2611,6 +2761,7 @@ mod tests {
         let minimal_filter = RadioCallFilter {
             system_id: None,
             talkgroup_id: None,
+            transcription_status: None,
             from_date: None,
             to_date: None,
             limit: 100,
@@ -2750,6 +2901,7 @@ mod tests {
         let large_offset = RadioCallFilter {
             system_id: Some("test"),
             talkgroup_id: None,
+            transcription_status: None,
             from_date: None,
             to_date: None,
             limit: 1,
@@ -2760,6 +2912,7 @@ mod tests {
         let large_limit = RadioCallFilter {
             system_id: Some("test"),
             talkgroup_id: None,
+            transcription_status: None,
             from_date: None,
             to_date: None,
             limit: 10_000,
@@ -2770,6 +2923,7 @@ mod tests {
         let zero_limit = RadioCallFilter {
             system_id: Some("test"),
             talkgroup_id: None,
+            transcription_status: None,
             from_date: None,
             to_date: None,
             limit: 0,
@@ -2787,6 +2941,7 @@ mod tests {
         let date_filter = RadioCallFilter {
             system_id: Some("date_test"),
             talkgroup_id: None,
+            transcription_status: None,
             from_date: Some(past),
             to_date: Some(future),
             limit: 50,
@@ -2801,6 +2956,7 @@ mod tests {
         let inverted_filter = RadioCallFilter {
             system_id: Some("inverted_test"),
             talkgroup_id: None,
+            transcription_status: None,
             from_date: Some(future),
             to_date: Some(past),
             limit: 10,
@@ -2948,6 +3104,7 @@ mod tests {
         let system_only = RadioCallFilter {
             system_id: Some("system_only"),
             talkgroup_id: None,
+            transcription_status: None,
             from_date: None,
             to_date: None,
             limit: 50,
@@ -2957,6 +3114,7 @@ mod tests {
         let talkgroup_only = RadioCallFilter {
             system_id: None,
             talkgroup_id: Some(12345),
+            transcription_status: None,
             from_date: None,
             to_date: None,
             limit: 50,
@@ -2966,6 +3124,7 @@ mod tests {
         let comprehensive = RadioCallFilter {
             system_id: Some("comprehensive_test"),
             talkgroup_id: Some(99_999),
+            transcription_status: None,
             from_date: Some(chrono::Utc::now() - chrono::Duration::days(30)),
             to_date: Some(chrono::Utc::now()),
             limit: 1000,
@@ -3148,6 +3307,7 @@ mod tests {
         let filter = RadioCallFilter {
             system_id: Some("debug_system"),
             talkgroup_id: Some(999),
+            transcription_status: None,
             from_date: None,
             to_date: None,
             limit: 100,
@@ -3534,6 +3694,7 @@ mod tests {
         let extreme_filter = RadioCallFilter {
             system_id: Some(long_system_id.as_str()),
             talkgroup_id: Some(i32::MIN),
+            transcription_status: None,
             from_date: Some(chrono::DateTime::<chrono::Utc>::MIN_UTC),
             to_date: Some(chrono::DateTime::<chrono::Utc>::MAX_UTC),
             limit: i64::MAX,
@@ -3656,20 +3817,22 @@ mod tests {
         // Test RadioCallFilter system_id logic
         let filter_with_system = RadioCallFilter {
             system_id: Some("police_dept"),
-            limit: 50,
-            offset: 0,
             talkgroup_id: None,
+            transcription_status: None,
             from_date: None,
             to_date: None,
+            limit: 50,
+            offset: 0,
         };
 
         let filter_without_system = RadioCallFilter {
             system_id: None,
-            limit: 50,
-            offset: 0,
             talkgroup_id: None,
+            transcription_status: None,
             from_date: None,
             to_date: None,
+            limit: 50,
+            offset: 0,
         };
 
         // Test filter logic branching
@@ -3865,6 +4028,7 @@ mod tests {
         let empty_filter = RadioCallFilter {
             system_id: None,
             talkgroup_id: None,
+            transcription_status: None,
             from_date: None,
             to_date: None,
             limit: 50,
@@ -3879,6 +4043,7 @@ mod tests {
         let full_filter = RadioCallFilter {
             system_id: Some("test_system"),
             talkgroup_id: Some(12345),
+            transcription_status: None,
             from_date: Some(now - chrono::Duration::hours(24)),
             to_date: Some(now),
             limit: 100,
@@ -4541,6 +4706,7 @@ mod tests {
         let filter_special_system = RadioCallFilter {
             system_id: Some("SYS-001_TEST.2024"),
             talkgroup_id: None,
+            transcription_status: None,
             from_date: None,
             to_date: None,
             limit: 5,
@@ -4660,6 +4826,7 @@ mod tests {
         let filter_no_system = RadioCallFilter {
             system_id: None,
             talkgroup_id: None,
+            transcription_status: None,
             from_date: None,
             to_date: None,
             limit: 100,
@@ -4707,7 +4874,7 @@ mod tests {
             };
 
             match params.client_ip {
-                std::net::IpAddr::V4(_) => {},
+                std::net::IpAddr::V4(_) => {}
                 std::net::IpAddr::V6(_) => panic!("Expected IPv4 for {addr_str}"),
             }
         }
@@ -4729,7 +4896,7 @@ mod tests {
 
             match params.client_ip {
                 std::net::IpAddr::V4(_) => panic!("Expected IPv6 for {addr_str}"),
-                std::net::IpAddr::V6(_) => {}, // IPv6 as expected
+                std::net::IpAddr::V6(_) => {} // IPv6 as expected
             }
         }
     }
@@ -4779,6 +4946,7 @@ mod tests {
         let filter_large = RadioCallFilter {
             system_id: Some("LARGE_SYS"),
             talkgroup_id: Some(i32::MAX),
+            transcription_status: None,
             from_date: Some(now - chrono::Duration::days(365)),
             to_date: Some(now),
             limit: i64::MAX,
@@ -4795,6 +4963,7 @@ mod tests {
         let filter_min = RadioCallFilter {
             system_id: Some(""),
             talkgroup_id: Some(i32::MIN),
+            transcription_status: None,
             from_date: Some(chrono::DateTime::<chrono::Utc>::MIN_UTC),
             to_date: Some(chrono::DateTime::<chrono::Utc>::MAX_UTC),
             limit: 1,

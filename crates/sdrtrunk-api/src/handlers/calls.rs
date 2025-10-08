@@ -30,6 +30,10 @@ pub struct ListCallsQuery {
     /// Filter by talkgroup ID
     pub talkgroup_id: Option<i32>,
 
+    /// Filter by transcription status (pending, processing, completed, failed)
+    #[validate(custom(function = "validate_transcription_status"))]
+    pub transcription_status: Option<String>,
+
     /// Filter calls from this date (ISO 8601 format)
     pub from_date: Option<chrono::DateTime<chrono::Utc>>,
 
@@ -251,6 +255,7 @@ pub async fn list_calls(
     let filter = sdrtrunk_database::RadioCallFilter {
         system_id: query.system_id.as_deref(),
         talkgroup_id: query.talkgroup_id,
+        transcription_status: query.transcription_status.as_deref(),
         from_date: query.from_date,
         to_date: query.to_date,
         limit,
@@ -275,6 +280,7 @@ pub async fn list_calls(
     let filter = sdrtrunk_database::RadioCallFilter {
         system_id: query.system_id.as_deref(),
         talkgroup_id: query.talkgroup_id,
+        transcription_status: query.transcription_status.as_deref(),
         from_date: query.from_date,
         to_date: query.to_date,
         limit: 0,  // Not used for count
@@ -456,6 +462,15 @@ pub async fn get_call(
 /// # Errors
 ///
 /// Returns a validation error if the sort order is not "asc" or "desc".
+fn validate_transcription_status(status: &str) -> Result<(), validator::ValidationError> {
+    match status {
+        "pending" | "processing" | "completed" | "failed" => Ok(()),
+        _ => Err(validator::ValidationError::new(
+            "invalid_transcription_status",
+        )),
+    }
+}
+
 fn validate_sort_order(sort: &str) -> Result<(), validator::ValidationError> {
     match sort {
         "asc" | "desc" => Ok(()),
@@ -495,6 +510,7 @@ mod tests {
             offset: Some(0),
             system_id: Some("police".to_string()),
             talkgroup_id: Some(12345),
+            transcription_status: None,
             from_date: Some(Utc::now() - chrono::Duration::hours(24)),
             to_date: Some(Utc::now()),
             sort: Some("desc".to_string()),
@@ -508,6 +524,7 @@ mod tests {
             offset: Some(0),
             system_id: None,
             talkgroup_id: None,
+            transcription_status: None,
             from_date: None,
             to_date: None,
             sort: None,
@@ -521,6 +538,7 @@ mod tests {
             offset: Some(-1),
             system_id: None,
             talkgroup_id: None,
+            transcription_status: None,
             from_date: None,
             to_date: None,
             sort: None,
@@ -534,6 +552,7 @@ mod tests {
             offset: Some(0),
             system_id: Some("a".repeat(51)), // Over max of 50
             talkgroup_id: None,
+            transcription_status: None,
             from_date: None,
             to_date: None,
             sort: None,
@@ -547,6 +566,7 @@ mod tests {
             offset: Some(0),
             system_id: None,
             talkgroup_id: None,
+            transcription_status: None,
             from_date: None,
             to_date: None,
             sort: Some("invalid".to_string()),
@@ -776,6 +796,7 @@ mod tests {
             offset: None,
             system_id: None,
             talkgroup_id: None,
+            transcription_status: None,
             from_date: None,
             to_date: None,
             sort: None,
@@ -822,6 +843,7 @@ mod tests {
             offset: Some(0),
             system_id: Some("a".repeat(50)), // Exactly at max length
             talkgroup_id: None,
+            transcription_status: None,
             from_date: None,
             to_date: None,
             sort: None,
@@ -835,6 +857,7 @@ mod tests {
             offset: Some(0),                  // Minimum valid
             system_id: Some("x".to_string()), // Minimum length
             talkgroup_id: Some(i32::MIN),     // Test extreme value
+            transcription_status: None,
             from_date: None,
             to_date: None,
             sort: Some("asc".to_string()),

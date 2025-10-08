@@ -408,6 +408,109 @@ where
     }
 }
 
+/// Performance assertion helper for enforcing response time targets
+pub struct PerformanceAssertion {
+    operation: String,
+    target_ms: u64,
+    max_ms: u64,
+}
+
+impl PerformanceAssertion {
+    /// Create a new performance assertion
+    ///
+    /// # Arguments
+    ///
+    /// * `operation` - Name of the operation being measured
+    /// * `target_ms` - Target response time in milliseconds (warning if exceeded)
+    /// * `max_ms` - Maximum acceptable response time in milliseconds (panic if exceeded)
+    pub fn new(operation: impl Into<String>, target_ms: u64, max_ms: u64) -> Self {
+        Self {
+            operation: operation.into(),
+            target_ms,
+            max_ms,
+        }
+    }
+
+    /// Execute a future and assert it completes within performance targets
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the operation fails or exceeds max time limit.
+    pub async fn assert<F, Fut, R>(&self, f: F) -> Result<R>
+    where
+        F: FnOnce() -> Fut,
+        Fut: std::future::Future<Output = Result<R>>,
+    {
+        let start = tokio::time::Instant::now();
+        let result = f().await;
+        let elapsed = start.elapsed();
+        let elapsed_ms = elapsed.as_millis() as u64;
+
+        if elapsed_ms > self.max_ms {
+            panic!(
+                "Performance assertion FAILED: '{}' took {}ms (max: {}ms)",
+                self.operation, elapsed_ms, self.max_ms
+            );
+        }
+
+        if elapsed_ms > self.target_ms {
+            tracing::warn!(
+                "Performance target EXCEEDED: '{}' took {}ms (target: {}ms)",
+                self.operation,
+                elapsed_ms,
+                self.target_ms
+            );
+        } else {
+            tracing::debug!(
+                "Performance OK: '{}' took {}ms (target: {}ms, max: {}ms)",
+                self.operation,
+                elapsed_ms,
+                self.target_ms,
+                self.max_ms
+            );
+        }
+
+        result
+    }
+
+    /// Execute a synchronous operation and assert it completes within performance targets
+    pub fn assert_sync<F, R>(&self, f: F) -> R
+    where
+        F: FnOnce() -> R,
+    {
+        let start = std::time::Instant::now();
+        let result = f();
+        let elapsed = start.elapsed();
+        let elapsed_ms = elapsed.as_millis() as u64;
+
+        if elapsed_ms > self.max_ms {
+            panic!(
+                "Performance assertion FAILED: '{}' took {}ms (max: {}ms)",
+                self.operation, elapsed_ms, self.max_ms
+            );
+        }
+
+        if elapsed_ms > self.target_ms {
+            tracing::warn!(
+                "Performance target EXCEEDED: '{}' took {}ms (target: {}ms)",
+                self.operation,
+                elapsed_ms,
+                self.target_ms
+            );
+        } else {
+            tracing::debug!(
+                "Performance OK: '{}' took {}ms (target: {}ms, max: {}ms)",
+                self.operation,
+                elapsed_ms,
+                self.target_ms,
+                self.max_ms
+            );
+        }
+
+        result
+    }
+}
+
 /// Memory usage monitoring for performance tests
 pub struct MemoryMonitor {
     initial: Option<usize>,
@@ -566,13 +669,81 @@ mod tests {
         let mp3_data = create_minimal_mp3(1000);
         assert!(!mp3_data.is_empty());
         assert!(mp3_data.starts_with(b"ID3"));
-        
+
         let wav_data = create_minimal_wav(1000);
         assert!(!wav_data.is_empty());
         assert!(wav_data.starts_with(b"RIFF"));
-        
+
         let flac_data = create_minimal_flac(1000);
         assert!(!flac_data.is_empty());
         assert!(flac_data.starts_with(b"fLaC"));
+    }
+
+    #[tokio::test]
+    async fn test_performance_assertion_success() {
+        let perf = PerformanceAssertion::new("fast operation", 50, 100);
+
+        let result = perf
+            .assert(|| async {
+                tokio::time::sleep(tokio::time::Duration::from_millis(10)).await;
+                Ok::<i32, sdrtrunk_core::context_error::ContextError>(42)
+            })
+            .await
+            .unwrap();
+
+        assert_eq!(result, 42);
+    }
+
+    #[tokio::test]
+    async fn test_performance_assertion_exceeds_target() {
+        let perf = PerformanceAssertion::new("slow operation", 10, 100);
+
+        // This should succeed but log a warning
+        let result = perf
+            .assert(|| async {
+                tokio::time::sleep(tokio::time::Duration::from_millis(20)).await;
+                Ok::<i32, sdrtrunk_core::context_error::ContextError>(42)
+            })
+            .await
+            .unwrap();
+
+        assert_eq!(result, 42);
+    }
+
+    #[tokio::test]
+    #[should_panic(expected = "Performance assertion FAILED")]
+    async fn test_performance_assertion_exceeds_max() {
+        let perf = PerformanceAssertion::new("too slow operation", 10, 50);
+
+        let _result = perf
+            .assert(|| async {
+                tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
+                Ok::<i32, sdrtrunk_core::context_error::ContextError>(42)
+            })
+            .await
+            .unwrap();
+    }
+
+    #[test]
+    fn test_performance_assertion_sync_success() {
+        let perf = PerformanceAssertion::new("fast sync operation", 50, 100);
+
+        let result = perf.assert_sync(|| {
+            std::thread::sleep(std::time::Duration::from_millis(5));
+            42
+        });
+
+        assert_eq!(result, 42);
+    }
+
+    #[test]
+    #[should_panic(expected = "Performance assertion FAILED")]
+    fn test_performance_assertion_sync_exceeds_max() {
+        let perf = PerformanceAssertion::new("too slow sync operation", 10, 50);
+
+        let _result = perf.assert_sync(|| {
+            std::thread::sleep(std::time::Duration::from_millis(100));
+            42
+        });
     }
 }

@@ -96,15 +96,14 @@ async fn test_file_upload_endpoint() -> Result<()> {
     
     // Upload file
     let upload_response = client.upload_file(&test_file_path, metadata).await?;
-    
-    // Note: The actual upload endpoint may not be fully implemented yet
-    // This test may return 404 or other status - adjust expectations accordingly
-    let status = upload_response.status();
-    println!("Upload response status: {status}");
-    
-    // For now, we just verify the server responds (even with 404 if endpoint not implemented)
-    assert!(status.is_client_error() || status.is_success() || status.is_server_error());
-    
+
+    // Verify upload succeeds with proper status code
+    assert_eq!(
+        upload_response.status(),
+        StatusCode::OK,
+        "Upload with valid MP3 file should return 200 OK"
+    );
+
     // Stop server
     server_handle.abort();
     
@@ -186,10 +185,13 @@ async fn test_api_error_handling() -> Result<()> {
     let response = client.get("/api/v1/nonexistent").await?;
     assert_eq!(response.status(), StatusCode::NOT_FOUND);
     
-    // Test malformed requests (once endpoints are implemented)
+    // Test malformed requests (should return 404 for unimplemented endpoint)
     let response = client.post_json("/api/v1/calls", &serde_json::json!({"invalid": "data"})).await?;
-    // Should return client error (400-499)
-    assert!(response.status().is_client_error() || response.status() == StatusCode::NOT_FOUND);
+    assert_eq!(
+        response.status(),
+        StatusCode::NOT_FOUND,
+        "Unimplemented endpoint should return 404 Not Found"
+    );
     
     // Stop server
     server_handle.abort();

@@ -81,48 +81,29 @@ async fn test_database_migrations() -> Result<()> {
 #[tokio::test]
 async fn test_radio_call_database_operations() -> Result<()> {
     init_test_logging();
-    
+
     let test_db = TestDatabase::new().await?;
     let db = test_db.database();
-    
-    // Create table for testing (since migrations might not include all tables yet)
-    let create_table_sql = r#"
-        CREATE TABLE IF NOT EXISTS radio_calls (
-            id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-            created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-            call_timestamp TIMESTAMPTZ NOT NULL,
-            system_id VARCHAR(50) NOT NULL,
-            system_label VARCHAR(255),
-            frequency BIGINT,
-            talkgroup_id INTEGER,
-            talkgroup_label VARCHAR(255),
-            talkgroup_group VARCHAR(255),
-            talkgroup_tag VARCHAR(255),
-            source_radio_id INTEGER,
-            talker_alias VARCHAR(255),
-            audio_filename VARCHAR(255),
-            audio_file_path TEXT,
-            audio_size_bytes BIGINT,
-            audio_content_type VARCHAR(100),
-            duration_seconds DECIMAL(10, 3),
-            transcription_text TEXT,
-            transcription_confidence DECIMAL(5, 4),
-            transcription_language VARCHAR(10),
-            transcription_status VARCHAR(20),
-            speaker_segments JSONB,
-            speaker_count INTEGER,
-            patches TEXT,
-            frequencies TEXT,
-            sources TEXT,
-            upload_ip INET,
-            upload_timestamp TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-            upload_api_key_id VARCHAR(255)
-        )
+
+    // TestDatabase::new() already runs migrations from
+    // crates/sdrtrunk-database/migrations/
+    // Verify the migration created the radio_calls table correctly
+    let table_check_sql = r#"
+        SELECT table_name
+        FROM information_schema.tables
+        WHERE table_schema = 'public' AND table_name = 'radio_calls'
     "#;
-    
-    sqlx::query(create_table_sql)
-        .execute(db.pool())
+
+    let row = sqlx::query(table_check_sql)
+        .fetch_one(db.pool())
         .await?;
+
+    let table_name: String = row.get("table_name");
+    assert_eq!(
+        table_name,
+        "radio_calls",
+        "Migration should create radio_calls table"
+    );
     
     // Test INSERT
     let call_id = Uuid::new_v4();
@@ -904,6 +885,465 @@ async fn test_database_performance() -> Result<()> {
     assert!(insert_duration < tokio::time::Duration::from_secs(10), "Batch insert took too long");
     assert!(query_duration < tokio::time::Duration::from_millis(100), "Indexed query took too long");
     assert!(range_query_duration < tokio::time::Duration::from_secs(1), "Range query took too long");
-    
+
+    Ok(())
+}
+
+/// Negative test: Insert with duplicate primary key should fail
+#[tokio::test]
+async fn test_insert_with_duplicate_id_returns_error() -> Result<()> {
+    init_test_logging();
+
+    let test_db = TestDatabase::new().await?;
+    let db = test_db.database();
+
+    let call_id = Uuid::new_v4();
+    let now = chrono::Utc::now();
+
+    // First insert should succeed
+    let insert_sql = r#"
+        INSERT INTO radio_calls (
+            id, created_at, call_timestamp, system_id, system_label,
+            talkgroup_id, transcription_status
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7)
+    "#;
+
+    sqlx::query(insert_sql)
+        .bind(call_id)
+        .bind(now)
+        .bind(now)
+        .bind("test_system")
+        .bind("Test System")
+        .bind(12345i32)
+        .bind("none")
+        .execute(db.pool())
+        .await?;
+
+    // Second insert with same ID should fail
+    let result = sqlx::query(insert_sql)
+        .bind(call_id) // Same ID - should fail
+        .bind(now)
+        .bind(now)
+        .bind("test_system2")
+        .bind("Test System 2")
+        .bind(54321i32)
+        .bind("none")
+        .execute(db.pool())
+        .await;
+
+    assert!(result.is_err(), "Duplicate ID insert should fail");
+
+    // Verify error is a database constraint violation
+    if let Err(e) = result {
+        let error_msg = e.to_string();
+        assert!(
+            error_msg.contains("duplicate") || error_msg.contains("unique") || error_msg.contains("constraint"),
+            "Error should indicate constraint violation: {}",
+            error_msg
+        );
+    }
+
+    Ok(())
+}
+
+/// Negative test: Query with invalid UUID string should fail
+#[tokio::test]
+async fn test_query_with_invalid_uuid_returns_error() -> Result<()> {
+    init_test_logging();
+
+    let test_db = TestDatabase::new().await?;
+    let db = test_db.database();
+
+    // Try to bind an invalid UUID string
+    let result = sqlx::query("SELECT * FROM radio_calls WHERE id = $1")
+        .bind("not-a-valid-uuid")
+        .fetch_optional(db.pool())
+        .await;
+
+    assert!(result.is_err(), "Invalid UUID should cause error");
+
+    Ok(())
+}
+
+/// Negative test: Connection pool exhaustion and recovery
+#[tokio::test]
+async fn test_connection_pool_exhaustion_recovery() -> Result<()> {
+    init_test_logging();
+
+    let test_db = TestDatabase::new().await?;
+    let db = test_db.database();
+
+    // Get pool stats
+    let pool_size = db.pool().size();
+    println!("Pool size: {}", pool_size);
+
+    // Pool should handle concurrent requests gracefully
+    let mut handles = vec![];
+    for i in 0..20 {
+        let pool = db.pool().clone();
+        let handle = tokio::spawn(async move {
+            let result = sqlx::query("SELECT $1 as num")
+                .bind(i)
+                .fetch_one(&pool)
+                .await;
+            result.is_ok()
+        });
+        handles.push(handle);
+    }
+
+    // All requests should complete (may queue if pool is full)
+    let results = futures::future::join_all(handles).await;
+    let successful = results.iter().filter(|r| r.is_ok() && r.as_ref().unwrap()).count();
+
+    assert_eq!(successful, 20, "All requests should eventually succeed despite pool limits");
+
+    Ok(())
+}
+
+/// Negative test: Transaction rollback on error
+#[tokio::test]
+async fn test_transaction_rollback_on_error() -> Result<()> {
+    init_test_logging();
+
+    let test_db = TestDatabase::new().await?;
+    let db = test_db.database();
+
+    let call_id = Uuid::new_v4();
+    let now = chrono::Utc::now();
+
+    // Start transaction
+    let mut tx = db.pool().begin().await?;
+
+    // Insert a record
+    sqlx::query(
+        r#"
+        INSERT INTO radio_calls (
+            id, created_at, call_timestamp, system_id,
+            talkgroup_id, transcription_status
+        ) VALUES ($1, $2, $3, $4, $5, $6)
+        "#
+    )
+    .bind(call_id)
+    .bind(now)
+    .bind(now)
+    .bind("test_system")
+    .bind(12345i32)
+    .bind("pending")
+    .execute(&mut *tx)
+    .await?;
+
+    // Explicitly rollback
+    tx.rollback().await?;
+
+    // Verify record was NOT inserted (transaction rolled back)
+    let result = sqlx::query("SELECT * FROM radio_calls WHERE id = $1")
+        .bind(call_id)
+        .fetch_optional(db.pool())
+        .await?;
+
+    assert!(result.is_none(), "Record should not exist after rollback");
+
+    Ok(())
+}
+
+/// Concurrent test: Multiple simultaneous inserts
+#[tokio::test]
+async fn test_concurrent_inserts_maintain_integrity() -> Result<()> {
+    init_test_logging();
+
+    let test_db = TestDatabase::new().await?;
+    let db = test_db.database();
+    let now = chrono::Utc::now();
+
+    // Spawn 10 concurrent insert tasks
+    let mut handles = Vec::new();
+    for i in 0..10 {
+        let pool = db.pool().clone();
+        let timestamp = now;
+
+        let handle = tokio::spawn(async move {
+            let call_id = Uuid::new_v4();
+            let system_id = format!("concurrent_system_{i}");
+
+            sqlx::query(
+                r#"
+                INSERT INTO radio_calls (
+                    id, created_at, call_timestamp, system_id,
+                    talkgroup_id, transcription_status
+                ) VALUES ($1, $2, $3, $4, $5, $6)
+                "#,
+            )
+            .bind(call_id)
+            .bind(timestamp)
+            .bind(timestamp)
+            .bind(&system_id)
+            .bind(1000 + i)
+            .bind("pending")
+            .execute(&pool)
+            .await?;
+
+            Ok::<_, sqlx::Error>(call_id)
+        });
+
+        handles.push(handle);
+    }
+
+    // Wait for all inserts to complete
+    let mut inserted_ids = Vec::new();
+    for handle in handles {
+        let call_id = handle.await.expect("Task should complete")?;
+        inserted_ids.push(call_id);
+    }
+
+    // Verify all 10 records were inserted
+    assert_eq!(inserted_ids.len(), 10);
+
+    // Verify all records are in the database
+    for call_id in &inserted_ids {
+        let result = sqlx::query("SELECT * FROM radio_calls WHERE id = $1")
+            .bind(call_id)
+            .fetch_one(db.pool())
+            .await?;
+
+        let id: Uuid = result.get("id");
+        assert_eq!(&id, call_id);
+    }
+
+    // Verify no data corruption - count should be exactly 10
+    let count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM radio_calls")
+        .fetch_one(db.pool())
+        .await?;
+
+    assert_eq!(count, 10, "Should have exactly 10 records");
+
+    Ok(())
+}
+
+/// Concurrent test: Simultaneous reads while writing
+#[tokio::test]
+async fn test_concurrent_reads_while_writing() -> Result<()> {
+    init_test_logging();
+
+    let test_db = TestDatabase::new().await?;
+    let db = test_db.database();
+    let now = chrono::Utc::now();
+
+    // Insert initial record
+    let initial_id = Uuid::new_v4();
+    sqlx::query(
+        r#"
+        INSERT INTO radio_calls (
+            id, created_at, call_timestamp, system_id,
+            talkgroup_id, transcription_status
+        ) VALUES ($1, $2, $3, $4, $5, $6)
+        "#,
+    )
+    .bind(initial_id)
+    .bind(now)
+    .bind(now)
+    .bind("read_write_test")
+    .bind(5000i32)
+    .bind("pending")
+    .execute(db.pool())
+    .await?;
+
+    // Spawn writer task that inserts records continuously
+    let writer_pool = db.pool().clone();
+    let writer_handle = tokio::spawn(async move {
+        for i in 0..5 {
+            let call_id = Uuid::new_v4();
+            let timestamp = chrono::Utc::now();
+
+            let result = sqlx::query(
+                r#"
+                INSERT INTO radio_calls (
+                    id, created_at, call_timestamp, system_id,
+                    talkgroup_id, transcription_status
+                ) VALUES ($1, $2, $3, $4, $5, $6)
+                "#,
+            )
+            .bind(call_id)
+            .bind(timestamp)
+            .bind(timestamp)
+            .bind("writer_system")
+            .bind(6000 + i)
+            .bind("pending")
+            .execute(&writer_pool)
+            .await;
+
+            if result.is_err() {
+                return Err(sdrtrunk_core::context_error::ContextError::new(
+                    "Writer task failed".to_string(),
+                ));
+            }
+
+            tokio::time::sleep(tokio::time::Duration::from_millis(10)).await;
+        }
+        Ok::<_, sdrtrunk_core::context_error::ContextError>(())
+    });
+
+    // Spawn multiple reader tasks that query simultaneously
+    let mut reader_handles = Vec::new();
+    for _ in 0..5 {
+        let reader_pool = db.pool().clone();
+
+        let handle = tokio::spawn(async move {
+            let mut read_count = 0;
+
+            for _ in 0..10 {
+                let result = sqlx::query("SELECT COUNT(*) as count FROM radio_calls")
+                    .fetch_one(&reader_pool)
+                    .await;
+
+                if result.is_ok() {
+                    read_count += 1;
+                }
+
+                tokio::time::sleep(tokio::time::Duration::from_millis(5)).await;
+            }
+
+            Ok::<_, sdrtrunk_core::context_error::ContextError>(read_count)
+        });
+
+        reader_handles.push(handle);
+    }
+
+    // Wait for writer to complete
+    writer_handle
+        .await
+        .expect("Writer task should complete")?;
+
+    // Wait for all readers to complete
+    for handle in reader_handles {
+        let read_count = handle.await.expect("Reader task should complete")?;
+        assert!(
+            read_count > 0,
+            "Reader should have completed at least one read"
+        );
+    }
+
+    // Verify final state
+    let final_count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM radio_calls")
+        .fetch_one(db.pool())
+        .await?;
+
+    assert_eq!(
+        final_count, 6,
+        "Should have 1 initial + 5 writer records = 6 total"
+    );
+
+    Ok(())
+}
+
+/// Concurrent test: Connection pool exhaustion and recovery
+#[tokio::test]
+async fn test_connection_pool_exhaustion_recovery() -> Result<()> {
+    init_test_logging();
+
+    let test_db = TestDatabase::new().await?;
+    let db = test_db.database();
+
+    // Spawn many concurrent queries (more than pool size)
+    let mut handles = Vec::new();
+    for i in 0..20 {
+        let pool = db.pool().clone();
+
+        let handle = tokio::spawn(async move {
+            // Simple query that should succeed even under load
+            let result: i32 = sqlx::query_scalar("SELECT $1::int")
+                .bind(i)
+                .fetch_one(&pool)
+                .await?;
+
+            Ok::<_, sqlx::Error>(result)
+        });
+
+        handles.push(handle);
+    }
+
+    // Wait for all queries to complete
+    let mut results = Vec::new();
+    for handle in handles {
+        let result = handle.await.expect("Task should complete")?;
+        results.push(result);
+    }
+
+    // Verify all queries completed successfully
+    assert_eq!(results.len(), 20);
+
+    // Verify results are correct (0..20)
+    for (i, result) in results.iter().enumerate() {
+        assert_eq!(*result, i as i32);
+    }
+
+    Ok(())
+}
+
+/// Concurrent test: No deadlocks on concurrent inserts to same table
+#[tokio::test]
+async fn test_concurrent_inserts_no_deadlock() -> Result<()> {
+    init_test_logging();
+
+    let test_db = TestDatabase::new().await?;
+    let db = test_db.database();
+    let now = chrono::Utc::now();
+
+    // Use a timeout to detect deadlocks
+    let timeout = tokio::time::Duration::from_secs(10);
+
+    let test_future = async {
+        // Spawn many concurrent insert tasks to the same table
+        let mut handles = Vec::new();
+        for i in 0..15 {
+            let pool = db.pool().clone();
+            let timestamp = now;
+
+            let handle = tokio::spawn(async move {
+                let call_id = Uuid::new_v4();
+
+                sqlx::query(
+                    r#"
+                    INSERT INTO radio_calls (
+                        id, created_at, call_timestamp, system_id,
+                        talkgroup_id, transcription_status
+                    ) VALUES ($1, $2, $3, $4, $5, $6)
+                    "#,
+                )
+                .bind(call_id)
+                .bind(timestamp)
+                .bind(timestamp)
+                .bind("deadlock_test")
+                .bind(7000 + i)
+                .bind("pending")
+                .execute(&pool)
+                .await?;
+
+                Ok::<_, sqlx::Error>(call_id)
+            });
+
+            handles.push(handle);
+        }
+
+        // Wait for all inserts to complete
+        for handle in handles {
+            handle.await.expect("Task should complete")?;
+        }
+
+        Ok::<_, sdrtrunk_core::context_error::ContextError>(())
+    };
+
+    // Run with timeout - if it times out, there's likely a deadlock
+    match tokio::time::timeout(timeout, test_future).await {
+        Ok(result) => result?,
+        Err(_) => panic!("Test timed out - possible deadlock detected"),
+    }
+
+    // Verify all records were inserted
+    let count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM radio_calls")
+        .fetch_one(db.pool())
+        .await?;
+
+    assert_eq!(count, 15, "All 15 records should be inserted");
+
     Ok(())
 }

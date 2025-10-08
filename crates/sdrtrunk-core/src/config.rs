@@ -67,6 +67,15 @@ pub struct WebServerConfig {
     /// Number of web server workers
     #[serde(default = "default_web_workers")]
     pub workers: usize,
+
+    /// API server host to connect to (not the bind address)
+    /// Can be overridden with `API_HOST` environment variable
+    #[serde(default = "default_api_host")]
+    pub api_host: String,
+
+    /// API server port to connect to (defaults to server.port if not specified)
+    #[serde(default)]
+    pub api_port: Option<u16>,
 }
 
 impl Default for WebServerConfig {
@@ -75,6 +84,8 @@ impl Default for WebServerConfig {
             host: default_web_host(),
             port: default_web_port(),
             workers: default_web_workers(),
+            api_host: default_api_host(),
+            api_port: None,
         }
     }
 }
@@ -206,6 +217,10 @@ const fn default_web_port() -> u16 {
 
 const fn default_web_workers() -> usize {
     2
+}
+
+fn default_api_host() -> String {
+    "localhost".to_string()
 }
 
 const fn default_max_connections() -> u32 {
@@ -340,6 +355,8 @@ impl Default for Config {
                 host: default_web_host(),
                 port: default_web_port(),
                 workers: default_web_workers(),
+                api_host: default_api_host(),
+                api_port: None,
             },
             database: DatabaseConfig {
                 url: database_url,
@@ -783,7 +800,10 @@ mod tests {
         assert_eq!(deserialized.database.max_connections, 200);
 
         // Verify storage config
-        assert_eq!(deserialized.storage.base_dir, PathBuf::from("/data/sdrtrunk"));
+        assert_eq!(
+            deserialized.storage.base_dir,
+            PathBuf::from("/data/sdrtrunk")
+        );
         assert_eq!(deserialized.storage.allowed_extensions.len(), 4);
 
         // Verify API config
@@ -803,5 +823,105 @@ mod tests {
         let monitor = deserialized.monitor.unwrap();
         assert!(monitor.enabled);
         assert!(monitor.watch_directory.is_some());
+    }
+
+    // Property-based tests
+    mod proptests {
+        use super::*;
+        use proptest::prelude::*;
+
+        proptest! {
+            /// Property: Config serialization to JSON roundtrip preserves values
+            #[test]
+            fn config_json_serialization_roundtrip(
+                port in 1024u16..65535,
+                workers in 1usize..32,
+                max_connections in 1u32..200,
+                max_file_size in 1_000_000u64..500_000_000,
+            ) {
+                let mut config = Config::default();
+                config.server.port = port;
+                config.server.workers = workers;
+                config.database.max_connections = max_connections;
+                config.storage.max_file_size = max_file_size;
+
+                // Serialize to JSON
+                let json = serde_json::to_string(&config).unwrap();
+
+                // Deserialize back
+                let deserialized: Config = serde_json::from_str(&json).unwrap();
+
+                // Verify values preserved
+                prop_assert_eq!(deserialized.server.port, port);
+                prop_assert_eq!(deserialized.server.workers, workers);
+                prop_assert_eq!(deserialized.database.max_connections, max_connections);
+                prop_assert_eq!(deserialized.storage.max_file_size, max_file_size);
+            }
+
+            /// Property: Config defaults are always valid
+            #[test]
+            fn config_defaults_are_always_valid(_any in 0u8..100) {
+                let config = Config::default();
+
+                // Verify required fields are non-empty
+                prop_assert!(!config.server.host.is_empty());
+                prop_assert!(!config.database.url.is_empty());
+                prop_assert!(!config.storage.upload_dir.is_empty());
+
+                // Verify numeric fields are in valid ranges
+                prop_assert!(config.server.port > 0);
+                prop_assert!(config.server.workers > 0);
+                prop_assert!(config.database.max_connections > 0);
+                prop_assert!(config.database.min_connections > 0);
+                prop_assert!(config.database.max_connections >= config.database.min_connections);
+                prop_assert!(config.storage.max_file_size > 0);
+                prop_assert!(!config.storage.allowed_extensions.is_empty());
+            }
+
+            /// Property: Server port is always in valid range after deserialization
+            #[test]
+            fn server_port_always_valid_range(
+                port in 1024u16..65535,
+            ) {
+                let server_config = ServerConfig {
+                    host: "0.0.0.0".to_string(),
+                    port,
+                    workers: 4,
+                };
+
+                let json = serde_json::to_string(&server_config).unwrap();
+                let deserialized: ServerConfig = serde_json::from_str(&json).unwrap();
+
+                prop_assert!(deserialized.port >= 1024);
+                prop_assert!(deserialized.port < 65535);
+                prop_assert_eq!(deserialized.port, port);
+            }
+
+            /// Property: Max connections >= min connections is maintained
+            #[test]
+            fn database_connection_invariant_maintained(
+                min in 1u32..50,
+                extra in 0u32..100,
+            ) {
+                let max = min + extra;
+                let db_config = DatabaseConfig {
+                    url: "postgresql://localhost/test".to_string(),
+                    max_connections: max,
+                    min_connections: min,
+                    connect_timeout: 30,
+                    idle_timeout: 300,
+                };
+
+                prop_assert!(db_config.max_connections >= db_config.min_connections);
+
+                // Verify roundtrip
+                let json = serde_json::to_string(&db_config).unwrap();
+                let deserialized: DatabaseConfig = serde_json::from_str(&json).unwrap();
+
+                prop_assert!(deserialized.max_connections >= deserialized.min_connections);
+                prop_assert_eq!(deserialized.max_connections, max);
+                prop_assert_eq!(deserialized.min_connections, min);
+            }
+        }
     }
 }

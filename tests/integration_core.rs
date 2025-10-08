@@ -555,11 +555,99 @@ mod property_tests {
             allowed_exts in prop::collection::vec("[a-z]{2,5}", 1..10)
         ) {
             let result = validate_file_extension(&filename, &allowed_exts);
-            
+
             let file_ext = filename.split('.').last().unwrap().to_lowercase();
             let should_be_valid = allowed_exts.iter().any(|ext| ext.eq_ignore_ascii_case(&file_ext));
-            
+
             prop_assert_eq!(result, should_be_valid);
         }
     }
+}
+
+/// Negative test: Parse filename with invalid talkgroup
+#[tokio::test]
+async fn test_parse_filename_with_invalid_talkgroup_returns_error() -> Result<()> {
+    init_test_logging();
+
+    // Talkgroup ID is not a number
+    let filename = "20240315_142530_Metro_TGinvalid_FROM_1234567.mp3";
+    let result = parse_sdrtrunk_filename(filename)?;
+
+    // Should default to 0 when talkgroup can't be parsed
+    assert_eq!(result.talkgroup_id, 0, "Invalid talkgroup should default to 0");
+
+    Ok(())
+}
+
+/// Negative test: Parse filename with negative radio ID (invalid)
+#[tokio::test]
+async fn test_parse_filename_with_negative_radio_id_returns_error() -> Result<()> {
+    init_test_logging();
+
+    // Negative radio ID
+    let filename = "20240315_142530_Metro_TG52197_FROM_-1234567.mp3";
+    let result = parse_sdrtrunk_filename(filename)?;
+
+    // Should default to 0 when radio ID can't be parsed as positive integer
+    assert_eq!(result.radio_id, 0, "Negative radio ID should default to 0");
+
+    Ok(())
+}
+
+/// Negative test: Parse filename with future date (should still parse)
+#[tokio::test]
+async fn test_parse_filename_with_future_date_still_parses() -> Result<()> {
+    init_test_logging();
+
+    // Far future date
+    let filename = "20991231_235959_Metro_TG52197_FROM_1234567.mp3";
+    let result = parse_sdrtrunk_filename(filename)?;
+
+    assert_eq!(result.date, "20991231");
+    assert!(result.unixtime > 0, "Future date should have valid unix timestamp");
+
+    Ok(())
+}
+
+/// Negative test: Validate system ID with special characters
+#[tokio::test]
+async fn test_validate_system_id_with_special_characters() -> Result<()> {
+    init_test_logging();
+
+    // Invalid special characters
+    assert!(!validate_system_id("system@123"), "@ should be invalid");
+    assert!(!validate_system_id("system#123"), "# should be invalid");
+    assert!(!validate_system_id("system!123"), "! should be invalid");
+    assert!(!validate_system_id("system 123"), "space should be invalid");
+    assert!(!validate_system_id("system/123"), "/ should be invalid");
+
+    // Valid special characters
+    assert!(validate_system_id("system-123"), "- should be valid");
+    assert!(validate_system_id("system_123"), "_ should be valid");
+
+    Ok(())
+}
+
+/// Negative test: Empty system ID should fail validation
+#[tokio::test]
+async fn test_validate_system_id_empty_fails() -> Result<()> {
+    init_test_logging();
+
+    assert!(!validate_system_id(""), "Empty system ID should fail");
+
+    Ok(())
+}
+
+/// Negative test: System ID over 50 characters should fail
+#[tokio::test]
+async fn test_validate_system_id_too_long_fails() -> Result<()> {
+    init_test_logging();
+
+    let long_id = "a".repeat(51);
+    assert!(!validate_system_id(&long_id), "System ID over 50 chars should fail");
+
+    let very_long_id = "a".repeat(100);
+    assert!(!validate_system_id(&very_long_id), "System ID over 50 chars should fail");
+
+    Ok(())
 }

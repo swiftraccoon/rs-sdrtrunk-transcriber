@@ -232,6 +232,7 @@
                     limit: PAGE_SIZE,
                     offset: currentOffset,
                     include_transcription: 'true',
+                    transcription_status: 'completed', // Only fetch completed transcriptions from database
                     sort: 'desc'
                 });
 
@@ -253,15 +254,12 @@
                 console.log('Completed transcriptions loaded:', data);
 
                 if (data.calls) {
-                    // Filter for completed transcriptions only
-                    const completed = data.calls.filter(call =>
-                        call.transcription_status === 'completed' && call.transcription_text
-                    );
-
+                    // Database already filtered for completed transcriptions
+                    // No need for client-side filtering
                     if (reset) {
-                        completedTranscriptions = completed;
+                        completedTranscriptions = data.calls;
                     } else {
-                        completedTranscriptions = completedTranscriptions.concat(completed);
+                        completedTranscriptions = completedTranscriptions.concat(data.calls);
                     }
 
                     hasMoreTranscriptions = data.pagination?.has_next || false;
