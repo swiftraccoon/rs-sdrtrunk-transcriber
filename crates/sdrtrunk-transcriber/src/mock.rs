@@ -10,9 +10,15 @@ use async_trait::async_trait;
 use chrono::Utc;
 use std::collections::HashMap;
 use std::path::Path;
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, PoisonError};
 use tokio::time::{Duration, sleep};
 use uuid::Uuid;
+
+/// Type alias for the shared request tracking map
+type RequestMap = Arc<Mutex<HashMap<Uuid, TranscriptionStatus>>>;
+
+/// Type alias for the shared statistics
+type StatsHandle = Arc<Mutex<TranscriptionStats>>;
 
 /// Mock transcription service for testing
 #[derive(Debug)]
@@ -33,14 +39,15 @@ pub struct MockTranscriptionService {
     failure_message: String,
 
     /// Request tracking
-    requests: Arc<Mutex<HashMap<Uuid, TranscriptionStatus>>>,
+    requests: RequestMap,
 
     /// Statistics
-    stats: Arc<Mutex<TranscriptionStats>>,
+    stats: StatsHandle,
 }
 
 impl MockTranscriptionService {
     /// Create a new mock service
+    #[must_use]
     pub fn new() -> Self {
         Self {
             config: TranscriptionConfig::default(),
@@ -54,12 +61,14 @@ impl MockTranscriptionService {
     }
 
     /// Set processing delay for testing
+    #[must_use]
     pub const fn with_delay(mut self, delay_ms: u64) -> Self {
         self.processing_delay_ms = delay_ms;
         self
     }
 
     /// Configure to fail transcriptions
+    #[must_use]
     pub fn with_failure(mut self, message: impl Into<String>) -> Self {
         self.should_fail = true;
         self.failure_message = message.into();
@@ -67,7 +76,7 @@ impl MockTranscriptionService {
     }
 
     /// Generate mock transcription text
-    fn generate_mock_text(&self, request: &TranscriptionRequest) -> String {
+    fn generate_mock_text(request: &TranscriptionRequest) -> String {
         format!(
             "Mock transcription for file: {}. This is a test transcription with multiple sentences. \
              The audio quality was good and the speakers were clear.",
@@ -76,19 +85,21 @@ impl MockTranscriptionService {
     }
 
     /// Generate mock segments
-    fn generate_mock_segments(&self, text: &str) -> Vec<TranscriptionSegment> {
+    fn generate_mock_segments(text: &str) -> Vec<TranscriptionSegment> {
         let sentences: Vec<&str> = text.split(". ").collect();
         let mut segments = Vec::new();
-        let mut current_time = 0.0;
+        let mut current_time = 0.0_f64;
 
         for (i, sentence) in sentences.iter().enumerate() {
             let duration = 3.5; // Mock 3.5 seconds per sentence
+            #[allow(clippy::cast_precision_loss)]
+            let i_f32 = i as f32;
             segments.push(TranscriptionSegment {
                 id: i,
                 start: current_time,
                 end: current_time + duration,
                 text: format!("{}.", sentence.trim_end_matches('.')),
-                confidence: Some(0.85 + (i as f32 * 0.02)),
+                confidence: Some(0.02_f32.mul_add(i_f32, 0.85)),
                 speaker: Some(format!("SPEAKER_{:02}", i % 2)),
                 words: None,
             });
@@ -99,7 +110,7 @@ impl MockTranscriptionService {
     }
 
     /// Generate mock speaker segments
-    fn generate_mock_speaker_segments(&self) -> Vec<SpeakerSegment> {
+    fn generate_mock_speaker_segments() -> Vec<SpeakerSegment> {
         vec![
             SpeakerSegment {
                 speaker: "SPEAKER_00".to_string(),
@@ -123,19 +134,21 @@ impl MockTranscriptionService {
     }
 
     /// Generate mock words
-    fn generate_mock_words(&self, text: &str) -> Vec<WordSegment> {
+    fn generate_mock_words(text: &str) -> Vec<WordSegment> {
         let mut words = Vec::new();
-        let mut current_time = 0.0;
+        let mut current_time = 0.0_f64;
 
         for word_text in text.split_whitespace().take(20) {
             // Just first 20 words for mock
             let duration = 0.3; // Mock 0.3 seconds per word
+            #[allow(clippy::cast_possible_truncation)]
+            let speaker_idx = current_time as i32;
             words.push(WordSegment {
                 word: word_text.to_string(),
                 start: current_time,
                 end: current_time + duration,
                 confidence: Some(0.9),
-                speaker: Some(format!("SPEAKER_{:02}", (current_time as i32) % 2)),
+                speaker: Some(format!("SPEAKER_{:02}", speaker_idx % 2)),
             });
             current_time += duration + 0.1; // 0.1 second gap
         }
@@ -169,13 +182,13 @@ impl TranscriptionService for MockTranscriptionService {
     ) -> TranscriptionResult<TranscriptionResponse> {
         // Track request
         {
-            let mut requests = self.requests.lock().unwrap();
-            requests.insert(request.id, TranscriptionStatus::Processing);
+            let mut requests = self.requests.lock().unwrap_or_else(PoisonError::into_inner);
+            let _ = requests.insert(request.id, TranscriptionStatus::Processing);
         }
 
         // Update stats
         {
-            let mut stats = self.stats.lock().unwrap();
+            let mut stats = self.stats.lock().unwrap_or_else(PoisonError::into_inner);
             stats.total_requests += 1;
             stats.processing += 1;
         }
@@ -187,17 +200,21 @@ impl TranscriptionService for MockTranscriptionService {
 
         // Update stats after processing
         {
-            let mut stats = self.stats.lock().unwrap();
+            let mut stats = self.stats.lock().unwrap_or_else(PoisonError::into_inner);
             stats.processing = stats.processing.saturating_sub(1);
         }
 
         // Check if should fail
         if self.should_fail {
-            let mut requests = self.requests.lock().unwrap();
-            requests.insert(request.id, TranscriptionStatus::Failed);
+            {
+                let mut requests = self.requests.lock().unwrap_or_else(PoisonError::into_inner);
+                let _ = requests.insert(request.id, TranscriptionStatus::Failed);
+            }
 
-            let mut stats = self.stats.lock().unwrap();
-            stats.failed += 1;
+            {
+                let mut stats = self.stats.lock().unwrap_or_else(PoisonError::into_inner);
+                stats.failed += 1;
+            }
 
             return Err(crate::error::TranscriptionError::processing_failed(
                 &self.failure_message,
@@ -205,15 +222,15 @@ impl TranscriptionService for MockTranscriptionService {
         }
 
         // Generate mock response
-        let text = self.generate_mock_text(request);
-        let segments = self.generate_mock_segments(&text);
+        let text = Self::generate_mock_text(request);
+        let segments = Self::generate_mock_segments(&text);
         let speaker_segments = if request.options.diarize {
-            self.generate_mock_speaker_segments()
+            Self::generate_mock_speaker_segments()
         } else {
             Vec::new()
         };
         let words = if request.options.word_timestamps {
-            self.generate_mock_words(&text)
+            Self::generate_mock_words(&text)
         } else {
             Vec::new()
         };
@@ -227,7 +244,7 @@ impl TranscriptionService for MockTranscriptionService {
             confidence: Some(0.89),
             processing_time_ms: self.processing_delay_ms,
             segments,
-            speaker_segments: speaker_segments.clone(),
+            speaker_segments,
             speaker_count: if request.options.diarize {
                 Some(2)
             } else {
@@ -240,18 +257,22 @@ impl TranscriptionService for MockTranscriptionService {
 
         // Update tracking
         {
-            let mut requests = self.requests.lock().unwrap();
-            requests.insert(request.id, TranscriptionStatus::Completed);
+            let mut requests = self.requests.lock().unwrap_or_else(PoisonError::into_inner);
+            let _ = requests.insert(request.id, TranscriptionStatus::Completed);
         }
 
         // Update stats
         {
-            let mut stats = self.stats.lock().unwrap();
+            let mut stats = self.stats.lock().unwrap_or_else(PoisonError::into_inner);
             stats.successful += 1;
-            stats.avg_processing_time_ms = (stats.avg_processing_time_ms
-                * (stats.successful - 1) as f64
-                + self.processing_delay_ms as f64)
-                / stats.successful as f64;
+            #[allow(clippy::cast_precision_loss)]
+            let prev_count = (stats.successful - 1) as f64;
+            #[allow(clippy::cast_precision_loss)]
+            let delay = self.processing_delay_ms as f64;
+            #[allow(clippy::cast_precision_loss)]
+            let total = stats.successful as f64;
+            stats.avg_processing_time_ms =
+                delay.mul_add(1.0, stats.avg_processing_time_ms * prev_count) / total;
             stats.total_audio_duration += 15.0; // Mock 15 seconds of audio
         }
 
@@ -267,11 +288,15 @@ impl TranscriptionService for MockTranscriptionService {
     }
 
     async fn get_stats(&self) -> TranscriptionResult<TranscriptionStats> {
-        Ok(self.stats.lock().unwrap().clone())
+        Ok(self
+            .stats
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .clone())
     }
 
     async fn get_status(&self, request_id: Uuid) -> TranscriptionResult<TranscriptionStatus> {
-        let requests = self.requests.lock().unwrap();
+        let requests = self.requests.lock().unwrap_or_else(PoisonError::into_inner);
         Ok(requests
             .get(&request_id)
             .copied()
@@ -279,8 +304,10 @@ impl TranscriptionService for MockTranscriptionService {
     }
 
     async fn cancel(&self, request_id: Uuid) -> TranscriptionResult<()> {
-        let mut requests = self.requests.lock().unwrap();
-        requests.insert(request_id, TranscriptionStatus::Cancelled);
+        {
+            let mut requests = self.requests.lock().unwrap_or_else(PoisonError::into_inner);
+            let _ = requests.insert(request_id, TranscriptionStatus::Cancelled);
+        }
         Ok(())
     }
 
@@ -325,12 +352,18 @@ impl TranscriptionService for MockTranscriptionService {
         }
     }
 
-    fn name(&self) -> &str {
+    fn name(&self) -> &'static str {
         "mock"
     }
 }
 
 #[cfg(test)]
+#[allow(
+    clippy::unwrap_used,
+    clippy::missing_panics_doc,
+    clippy::float_cmp,
+    clippy::indexing_slicing
+)]
 mod tests {
     use super::*;
     use std::path::PathBuf;
@@ -384,7 +417,7 @@ mod tests {
         assert_eq!(initial_stats.total_requests, 0);
 
         let request = TranscriptionRequest::new(Uuid::new_v4(), PathBuf::from("/test/audio.mp3"));
-        service.transcribe(&request).await.unwrap();
+        let _ = service.transcribe(&request).await.unwrap();
 
         let stats = service.get_stats().await.unwrap();
         assert_eq!(stats.total_requests, 1);
@@ -414,7 +447,7 @@ mod tests {
         let request = TranscriptionRequest::new(Uuid::new_v4(), PathBuf::from("/test/audio.mp3"));
         let request_id = request.id;
 
-        service.transcribe(&request).await.unwrap();
+        let _ = service.transcribe(&request).await.unwrap();
 
         let status = service.get_status(request_id).await.unwrap();
         assert_eq!(status, TranscriptionStatus::Completed);
@@ -433,19 +466,17 @@ mod tests {
 
     #[test]
     fn test_mock_text_generation() {
-        let service = MockTranscriptionService::new();
         let request = TranscriptionRequest::new(Uuid::new_v4(), PathBuf::from("/test/audio.mp3"));
 
-        let text = service.generate_mock_text(&request);
+        let text = MockTranscriptionService::generate_mock_text(&request);
         assert!(text.contains("Mock transcription"));
         assert!(text.contains("audio.mp3"));
     }
 
     #[test]
     fn test_mock_segments_generation() {
-        let service = MockTranscriptionService::new();
         let text = "First sentence. Second sentence. Third sentence.";
-        let segments = service.generate_mock_segments(text);
+        let segments = MockTranscriptionService::generate_mock_segments(text);
 
         assert_eq!(segments.len(), 3);
         assert_eq!(segments[0].id, 0);
@@ -454,8 +485,7 @@ mod tests {
 
     #[test]
     fn test_mock_speaker_segments() {
-        let service = MockTranscriptionService::new();
-        let segments = service.generate_mock_speaker_segments();
+        let segments = MockTranscriptionService::generate_mock_speaker_segments();
 
         assert_eq!(segments.len(), 3);
         assert_eq!(segments[0].speaker, "SPEAKER_00");
@@ -464,9 +494,8 @@ mod tests {
 
     #[test]
     fn test_mock_words_generation() {
-        let service = MockTranscriptionService::new();
         let text = "This is a test transcription with many words";
-        let words = service.generate_mock_words(text);
+        let words = MockTranscriptionService::generate_mock_words(text);
 
         assert!(!words.is_empty());
         assert_eq!(words[0].word, "This");

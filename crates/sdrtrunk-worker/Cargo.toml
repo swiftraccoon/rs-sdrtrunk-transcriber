@@ -1,0 +1,33 @@
+[package]
+name = "sdrtrunk-worker"
+version.workspace = true
+authors.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+description = "Standalone transcription worker for SDRTrunk (K8s-ready)"
+publish = false
+
+[[bin]]
+name = "sdrtrunk-worker"
+path = "src/main.rs"
+
+[dependencies]
+sdrtrunk-protocol = { path = "../sdrtrunk-protocol" }
+sdrtrunk-storage = { path = "../sdrtrunk-storage" }
+
+tokio = { workspace = true }
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
+anyhow = { workspace = true }
+uuid = { workspace = true }
+config = { workspace = true }
+
+tempfile = { workspace = true }
+
+# Speech-to-text
+whisper-rs = { workspace = true }
+hound = { workspace = true }
+
+[lints]
+workspace = true

@@ -1,10 +1,10 @@
 //! Application state management
 
 use crate::api_client::ApiClient;
-use sdrtrunk_core::Config;
+use sdrtrunk_protocol::Config;
 
 /// Application state holding configuration and clients
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct AppState {
     /// Application configuration
     pub config: Config,

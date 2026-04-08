@@ -1,4 +1,5 @@
 //! Route definitions for the web interface
+#![allow(unreachable_pub)]
 
 use crate::{
     handlers::{api, pages},

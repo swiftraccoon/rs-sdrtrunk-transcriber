@@ -1,0 +1,32 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: download-whisper-model
+spec:
+  template:
+    spec:
+      containers:
+        - name: downloader
+          image: curlimages/curl:latest
+          command:
+            - sh
+            - -c
+            - |
+              if [ -f /models/ggml-large-v3.bin ]; then
+                echo "Model already exists, skipping download"
+              else
+                echo "Downloading Whisper Large v3 model (~3GB)..."
+                curl -L -o /models/ggml-large-v3.bin \
+                  https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-large-v3.bin
+                echo "Download complete"
+              fi
+              ls -lh /models/
+          volumeMounts:
+            - name: whisper-model
+              mountPath: /models
+      volumes:
+        - name: whisper-model
+          persistentVolumeClaim:
+            claimName: whisper-model
+      restartPolicy: Never
+  backoffLimit: 3

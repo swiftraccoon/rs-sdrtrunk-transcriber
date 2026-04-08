@@ -1,8 +1,8 @@
 //! Test fixtures and sample data
 
 use chrono::{DateTime, Utc};
-use sdrtrunk_core::types::{
-    ApiResponse, AudioInfo, ErrorResponse, FileData, PaginationInfo, ProcessingResult, 
+use sdrtrunk_protocol::types::{
+    ApiResponse, AudioInfo, ErrorResponse, FileData, PaginationInfo, ProcessingResult,
     RadioCall, SystemStats, TranscriptionStatus, UploadStatus
 };
 use serde_json::json;
@@ -475,8 +475,8 @@ pub struct ConfigFixtures;
 
 impl ConfigFixtures {
     /// Development configuration
-    pub fn development() -> sdrtrunk_core::Config {
-        let mut config = sdrtrunk_core::Config::default();
+    pub fn development() -> sdrtrunk_protocol::Config {
+        let mut config = sdrtrunk_protocol::Config::default();
         config.server.host = "127.0.0.1".to_string();
         config.server.port = 3000;
         config.database.url = "postgresql://test:test@localhost/sdrtrunk_test".to_string();
@@ -487,8 +487,8 @@ impl ConfigFixtures {
     }
 
     /// Production-like configuration
-    pub fn production() -> sdrtrunk_core::Config {
-        let mut config = sdrtrunk_core::Config::default();
+    pub fn production() -> sdrtrunk_protocol::Config {
+        let mut config = sdrtrunk_protocol::Config::default();
         config.server.host = "0.0.0.0".to_string();
         config.server.port = 8080;
         config.database.url = "postgresql://prod:secret@db.example.com/sdrtrunk".to_string();
@@ -500,8 +500,8 @@ impl ConfigFixtures {
     }
 
     /// Testing configuration with temporary directories
-    pub fn testing() -> sdrtrunk_core::Config {
-        let mut config = sdrtrunk_core::Config::default();
+    pub fn testing() -> sdrtrunk_protocol::Config {
+        let mut config = sdrtrunk_protocol::Config::default();
         config.server.port = 0; // Random available port
         config.database.url = "postgresql://postgres:postgres@localhost/test".to_string();
         config.api.enable_auth = false;

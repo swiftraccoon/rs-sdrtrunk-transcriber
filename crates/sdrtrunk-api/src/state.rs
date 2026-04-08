@@ -1,10 +1,9 @@
 //! Application state management
 
-use sdrtrunk_core::{Config, context_error, context_error::Result};
-use sdrtrunk_database::PgPool;
-use sdrtrunk_transcriber::TranscriptionWorkerPool;
+use anyhow::{Result, anyhow};
+use sdrtrunk_protocol::Config;
+use sdrtrunk_storage::PgPool;
 use std::path::PathBuf;
-use std::sync::Arc;
 
 /// Shared application state
 #[derive(Clone)]
@@ -15,8 +14,16 @@ pub struct AppState {
     pub pool: PgPool,
     /// Base directory for uploaded files
     pub upload_dir: PathBuf,
-    /// Transcription worker pool
-    pub transcription_pool: Option<Arc<TranscriptionWorkerPool>>,
+}
+
+impl std::fmt::Debug for AppState {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("AppState")
+            .field("config", &self.config)
+            .field("pool", &"PgPool { .. }")
+            .field("upload_dir", &self.upload_dir)
+            .finish()
+    }
 }
 
 impl AppState {
@@ -36,13 +43,7 @@ impl AppState {
             config,
             pool,
             upload_dir,
-            transcription_pool: None,
         })
-    }
-
-    /// Set the transcription worker pool
-    pub fn set_transcription_pool(&mut self, pool: Arc<TranscriptionWorkerPool>) {
-        self.transcription_pool = Some(pool);
     }
 
     /// Get file storage path for a given system and date
@@ -69,7 +70,7 @@ impl AppState {
     pub fn validate(&self) -> Result<()> {
         // Check that upload directory exists and is writable
         if !self.upload_dir.exists() {
-            return Err(context_error!(
+            return Err(anyhow!(
                 "Upload directory does not exist: {}",
                 self.upload_dir.display()
             ));
@@ -85,10 +86,47 @@ impl AppState {
 }
 
 #[cfg(test)]
-#[allow(clippy::missing_panics_doc)]
+#[allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::panic,
+    clippy::indexing_slicing,
+    clippy::cognitive_complexity,
+    clippy::too_many_lines,
+    clippy::unreadable_literal,
+    clippy::redundant_clone,
+    clippy::missing_panics_doc,
+    clippy::missing_errors_doc,
+    clippy::needless_pass_by_value,
+    clippy::uninlined_format_args,
+    unused_qualifications,
+    clippy::cast_possible_truncation,
+    clippy::cast_precision_loss,
+    clippy::cast_sign_loss,
+    clippy::cast_possible_wrap,
+    clippy::items_after_statements,
+    clippy::float_cmp,
+    clippy::redundant_closure_for_method_calls,
+    clippy::fn_params_excessive_bools,
+    clippy::similar_names,
+    clippy::map_unwrap_or,
+    clippy::unused_async,
+    clippy::case_sensitive_file_extension_comparisons,
+    clippy::manual_string_new,
+    clippy::no_effect_underscore_binding,
+    clippy::option_if_let_else,
+    clippy::single_char_pattern,
+    clippy::ip_constant,
+    clippy::or_fun_call,
+    clippy::cast_lossless,
+    clippy::needless_collect,
+    clippy::single_match_else,
+    clippy::needless_raw_string_hashes,
+    clippy::match_same_arms
+)]
 mod tests {
     use super::*;
-    use sdrtrunk_database::PgPool;
+    use sdrtrunk_storage::PgPool;
     use tempfile::TempDir;
 
     #[test]

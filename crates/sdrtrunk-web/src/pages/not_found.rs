@@ -1,16 +1,18 @@
 //! 404 Not Found page
+#![allow(unreachable_pub)]
 
 use leptos::prelude::*;
-use leptos_router::components::*;
+use leptos_router::components::A;
 
 /// 404 Not Found page component
+#[allow(unreachable_pub)]
 #[component]
 pub fn NotFound() -> impl IntoView {
     view! {
         <div class="not-found">
             <h2>Page Not Found</h2>
             <p>The page you are looking for does not exist.</p>
-            <A href="/" class="btn btn-primary">Return to Dashboard</A>
+            <A href="/">Return to Dashboard</A>
         </div>
     }
 }

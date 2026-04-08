@@ -86,6 +86,10 @@ pub struct ReadinessResponse {
 ///   "uptime_seconds": 3600
 /// }
 /// ```
+///
+/// # Errors
+///
+/// Returns `SERVICE_UNAVAILABLE` if the database health check fails.
 pub async fn health_check(
     State(state): State<Arc<AppState>>,
 ) -> Result<Json<HealthResponse>, StatusCode> {
@@ -100,6 +104,7 @@ pub async fn health_check(
         }
     };
 
+    #[allow(clippy::cast_possible_truncation)]
     let response_time = start_time.elapsed().as_millis() as u64;
 
     let health_response = HealthResponse {
@@ -116,7 +121,11 @@ pub async fn health_check(
 
 /// Readiness check endpoint for Kubernetes-style health checks
 ///
-/// Returns 200 OK if the service is ready to accept traffic
+/// Returns 200 OK if the service is ready to accept traffic.
+///
+/// # Errors
+///
+/// Returns `SERVICE_UNAVAILABLE` if the database is not accessible.
 pub async fn readiness_check(
     State(state): State<Arc<AppState>>,
 ) -> Result<Json<ReadinessResponse>, StatusCode> {
@@ -137,11 +146,16 @@ pub async fn readiness_check(
 }
 
 /// Check database health and gather metrics
+///
+/// # Errors
+///
+/// Returns a `sqlx::Error` if the database query fails.
+#[allow(clippy::cast_possible_truncation)]
 async fn check_database_health(state: &Arc<AppState>) -> Result<DatabaseHealth, sqlx::Error> {
     let start_time = std::time::Instant::now();
 
     // Perform a simple query to test connectivity
-    sqlx::query("SELECT 1 as health_check")
+    let _ = sqlx::query("SELECT 1 as health_check")
         .fetch_one(&state.pool)
         .await?;
 
@@ -169,13 +183,17 @@ fn get_uptime_seconds() -> u64 {
 }
 
 /// Detailed health check endpoint with extended diagnostics
+///
+/// # Errors
+///
+/// Returns `SERVICE_UNAVAILABLE` if the database health check fails.
 pub async fn detailed_health_check(
     State(state): State<Arc<AppState>>,
 ) -> Result<Json<serde_json::Value>, StatusCode> {
     let mut health_data = serde_json::Map::new();
 
     // Basic health info
-    health_data.insert(
+    let _ = health_data.insert(
         "service".to_string(),
         serde_json::json!({
             "name": "sdrtrunk-api",
@@ -188,13 +206,13 @@ pub async fn detailed_health_check(
     // Database health
     match check_database_health(&state).await {
         Ok(db_health) => {
-            health_data.insert(
+            let _ = health_data.insert(
                 "database".to_string(),
-                serde_json::to_value(&db_health).unwrap(),
+                serde_json::to_value(&db_health).unwrap_or_default(),
             );
         }
         Err(e) => {
-            health_data.insert(
+            let _ = health_data.insert(
                 "database".to_string(),
                 serde_json::json!({
                     "connected": false,
@@ -206,7 +224,7 @@ pub async fn detailed_health_check(
     }
 
     // System metrics
-    health_data.insert(
+    let _ = health_data.insert(
         "system".to_string(),
         serde_json::json!({
             "uptime_seconds": get_uptime_seconds(),
@@ -216,7 +234,7 @@ pub async fn detailed_health_check(
     );
 
     // Configuration status
-    health_data.insert(
+    let _ = health_data.insert(
         "configuration".to_string(),
         serde_json::json!({
             "database_url_configured": !state.config.database.url.is_empty(),
@@ -255,7 +273,44 @@ fn get_disk_usage(path: &std::path::Path) -> serde_json::Value {
 }
 
 #[cfg(test)]
-#[allow(clippy::missing_panics_doc)]
+#[allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::panic,
+    clippy::indexing_slicing,
+    clippy::cognitive_complexity,
+    clippy::too_many_lines,
+    clippy::unreadable_literal,
+    clippy::redundant_clone,
+    clippy::missing_panics_doc,
+    clippy::missing_errors_doc,
+    clippy::needless_pass_by_value,
+    clippy::uninlined_format_args,
+    unused_qualifications,
+    clippy::cast_possible_truncation,
+    clippy::cast_precision_loss,
+    clippy::cast_sign_loss,
+    clippy::cast_possible_wrap,
+    clippy::items_after_statements,
+    clippy::float_cmp,
+    clippy::redundant_closure_for_method_calls,
+    clippy::fn_params_excessive_bools,
+    clippy::similar_names,
+    clippy::map_unwrap_or,
+    clippy::unused_async,
+    clippy::case_sensitive_file_extension_comparisons,
+    clippy::manual_string_new,
+    clippy::no_effect_underscore_binding,
+    clippy::option_if_let_else,
+    clippy::single_char_pattern,
+    clippy::ip_constant,
+    clippy::or_fun_call,
+    clippy::cast_lossless,
+    clippy::needless_collect,
+    clippy::single_match_else,
+    clippy::needless_raw_string_hashes,
+    clippy::match_same_arms
+)]
 mod tests {
     use super::*;
     use tempfile::TempDir;
@@ -442,8 +497,8 @@ mod tests {
     async fn test_health_check_handler_with_memory_db() {
         use crate::state::AppState;
         use axum::extract::State;
-        use sdrtrunk_core::Config;
-        use sdrtrunk_database::Database;
+        use sdrtrunk_protocol::Config;
+        use sdrtrunk_storage::Database;
         use std::sync::Arc;
 
         // Try to create a test database connection
@@ -451,7 +506,7 @@ mod tests {
         config.database.url = "sqlite::memory:".to_string();
 
         if let Ok(db) = Database::new(&config).await
-            && db.migrate().await.is_ok()
+            && db.init_schema().await.is_ok()
         {
             let state = Arc::new(AppState::new(config, db.pool().clone()).unwrap());
 
@@ -478,8 +533,8 @@ mod tests {
     async fn test_readiness_check_handler_with_memory_db() {
         use crate::state::AppState;
         use axum::extract::State;
-        use sdrtrunk_core::Config;
-        use sdrtrunk_database::Database;
+        use sdrtrunk_protocol::Config;
+        use sdrtrunk_storage::Database;
         use std::sync::Arc;
 
         // Try to create a test database connection
@@ -487,7 +542,7 @@ mod tests {
         config.database.url = "sqlite::memory:".to_string();
 
         if let Ok(db) = Database::new(&config).await
-            && db.migrate().await.is_ok()
+            && db.init_schema().await.is_ok()
         {
             let state = Arc::new(AppState::new(config, db.pool().clone()).unwrap());
 
@@ -510,8 +565,8 @@ mod tests {
     #[tokio::test]
     async fn test_check_database_health_function() {
         use crate::state::AppState;
-        use sdrtrunk_core::Config;
-        use sdrtrunk_database::Database;
+        use sdrtrunk_protocol::Config;
+        use sdrtrunk_storage::Database;
         use std::sync::Arc;
 
         // Try to create a test database connection
@@ -519,7 +574,7 @@ mod tests {
         config.database.url = "sqlite::memory:".to_string();
 
         if let Ok(db) = Database::new(&config).await
-            && db.migrate().await.is_ok()
+            && db.init_schema().await.is_ok()
         {
             let state = Arc::new(AppState::new(config, db.pool().clone()).unwrap());
 

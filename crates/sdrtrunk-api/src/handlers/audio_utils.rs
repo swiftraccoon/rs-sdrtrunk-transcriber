@@ -16,6 +16,11 @@ struct Mp3Header {
 
 impl Mp3Header {
     /// Parse MP3 header from 4 bytes
+    #[allow(
+        clippy::too_many_lines,
+        clippy::indexing_slicing,
+        clippy::match_same_arms
+    )]
     fn parse(header_bytes: &[u8]) -> Option<Self> {
         if header_bytes.len() < 4 {
             return None;
@@ -115,7 +120,7 @@ impl Mp3Header {
             return None; // Only support Layer III for now
         };
 
-        Some(Mp3Header {
+        Some(Self {
             version,
             layer,
             bitrate,
@@ -127,6 +132,11 @@ impl Mp3Header {
 }
 
 /// Calculate the duration of an MP3 file in seconds
+#[allow(
+    clippy::cognitive_complexity,
+    clippy::indexing_slicing,
+    clippy::cast_precision_loss
+)]
 pub fn calculate_mp3_duration(audio_data: &[u8]) -> Option<f64> {
     if audio_data.len() < 4 {
         return None;
@@ -162,7 +172,8 @@ pub fn calculate_mp3_duration(audio_data: &[u8]) -> Option<f64> {
         if total_frames > 0 {
             // Calculate duration based on actual frame count
             let samples_per_frame = if header.version == 1 { 1152.0 } else { 576.0 };
-            let duration = (total_frames as f64 * samples_per_frame) / header.sample_rate as f64;
+            let duration =
+                (f64::from(total_frames) * samples_per_frame) / f64::from(header.sample_rate);
 
             debug!(
                 "Calculated MP3 duration: {:.2}s ({} frames, {}kbps, {}Hz)",
@@ -174,7 +185,7 @@ pub fn calculate_mp3_duration(audio_data: &[u8]) -> Option<f64> {
 
         // Fallback: estimate based on file size and detected bitrate
         let file_size_bits = audio_data.len() as f64 * 8.0;
-        let duration = file_size_bits / (header.bitrate as f64 * 1000.0);
+        let duration = file_size_bits / (f64::from(header.bitrate) * 1000.0);
 
         debug!(
             "Estimated MP3 duration from bitrate: {:.2}s ({}kbps)",
@@ -197,6 +208,8 @@ pub fn calculate_mp3_duration(audio_data: &[u8]) -> Option<f64> {
 }
 
 /// Calculate audio duration based on file extension
+#[must_use]
+#[allow(clippy::indexing_slicing)]
 pub fn calculate_audio_duration(audio_data: &[u8], filename: Option<&str>) -> Option<f64> {
     // Determine file type from extension if available
     if let Some(name) = filename
@@ -215,7 +228,44 @@ pub fn calculate_audio_duration(audio_data: &[u8], filename: Option<&str>) -> Op
 }
 
 #[cfg(test)]
-#[allow(clippy::missing_panics_doc)]
+#[allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::panic,
+    clippy::indexing_slicing,
+    clippy::cognitive_complexity,
+    clippy::too_many_lines,
+    clippy::unreadable_literal,
+    clippy::redundant_clone,
+    clippy::missing_panics_doc,
+    clippy::missing_errors_doc,
+    clippy::needless_pass_by_value,
+    clippy::uninlined_format_args,
+    unused_qualifications,
+    clippy::cast_possible_truncation,
+    clippy::cast_precision_loss,
+    clippy::cast_sign_loss,
+    clippy::cast_possible_wrap,
+    clippy::items_after_statements,
+    clippy::float_cmp,
+    clippy::redundant_closure_for_method_calls,
+    clippy::fn_params_excessive_bools,
+    clippy::similar_names,
+    clippy::map_unwrap_or,
+    clippy::unused_async,
+    clippy::case_sensitive_file_extension_comparisons,
+    clippy::manual_string_new,
+    clippy::no_effect_underscore_binding,
+    clippy::option_if_let_else,
+    clippy::single_char_pattern,
+    clippy::ip_constant,
+    clippy::or_fun_call,
+    clippy::cast_lossless,
+    clippy::needless_collect,
+    clippy::single_match_else,
+    clippy::needless_raw_string_hashes,
+    clippy::match_same_arms
+)]
 mod tests {
     use super::*;
 

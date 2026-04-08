@@ -105,33 +105,26 @@ dev:
     just test
 
 # Run pre-commit checks
-pre-commit:
-    just fmt
-    just lint
-    just test
+pre-commit: fmt
+    ./lint.sh
 
 # Database setup for local testing
 db-setup:
-    docker run -d --name sdrtrunk-test-db \
+    podman run -d --name sdrtrunk-test-db \
         -e POSTGRES_USER=sdrtrunk_test \
         -e POSTGRES_PASSWORD=test_password \
         -e POSTGRES_DB=sdrtrunk_test \
         -p 5433:5432 \
-        postgres:16-alpine || docker start sdrtrunk-test-db
-
-# Run database migrations
-db-migrate:
-    cd crates/sdrtrunk-database && \
-    sqlx migrate run --database-url "postgresql://sdrtrunk_test:test_password@localhost:5433/sdrtrunk_test"
+        postgres:16-alpine || podman start sdrtrunk-test-db
 
 # Stop test database
 db-stop:
-    docker stop sdrtrunk-test-db || true
+    podman stop sdrtrunk-test-db || true
 
 # Clean up test database
 db-clean:
-    docker stop sdrtrunk-test-db || true
-    docker rm sdrtrunk-test-db || true
+    podman stop sdrtrunk-test-db || true
+    podman rm sdrtrunk-test-db || true
 
 # Run containerized CI environment
 ci-local:
@@ -160,4 +153,4 @@ lint-pedantic:
     @CLIPPY_FLAGS="-D warnings -W clippy::pedantic -A clippy::missing_errors_doc -A clippy::missing_panics_doc" just lint
 
 lint-strict:
-    @CLIPPY_FLAGS="-D warnings -D clippy::all -D clippy::pedantic -D clippy::nursery -D clippy::cargo -A clippy::multiple_crate_versions" just lint
+    ./lint.sh

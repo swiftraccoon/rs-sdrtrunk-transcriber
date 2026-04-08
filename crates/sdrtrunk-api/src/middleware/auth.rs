@@ -7,7 +7,8 @@ use axum::{
     middleware::Next,
     response::Response,
 };
-use sdrtrunk_database::queries;
+use sdrtrunk_storage::queries;
+use sha2::{Digest, Sha256};
 use std::sync::Arc;
 use tracing::{debug, error, warn};
 
@@ -98,9 +99,11 @@ fn extract_api_key(headers: &HeaderMap) -> Result<String, (StatusCode, axum::Jso
 async fn validate_api_key(
     state: &Arc<AppState>,
     api_key: &str,
-) -> Result<sdrtrunk_database::models::ApiKeyDb, (StatusCode, axum::Json<MiddlewareError>)> {
-    // Hash the API key for database lookup
-    let key_hash = format!("{:x}", md5::compute(api_key));
+) -> Result<sdrtrunk_storage::models::ApiKeyDb, (StatusCode, axum::Json<MiddlewareError>)> {
+    // Hash the API key for database lookup using SHA-256 (cryptographically secure)
+    let mut hasher = Sha256::new();
+    hasher.update(api_key.as_bytes());
+    let key_hash = format!("{:x}", hasher.finalize());
     
     match queries::validate_api_key(&state.pool, &key_hash).await {
         Ok(Some(api_key_info)) => {
@@ -218,7 +221,44 @@ pub fn optional_auth_layer() -> impl tower::Layer<axum::routing::Route> + Clone 
 }
 
 #[cfg(test)]
-#[allow(clippy::missing_panics_doc)]
+#[allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::panic,
+    clippy::indexing_slicing,
+    clippy::cognitive_complexity,
+    clippy::too_many_lines,
+    clippy::unreadable_literal,
+    clippy::redundant_clone,
+    clippy::missing_panics_doc,
+    clippy::missing_errors_doc,
+    clippy::needless_pass_by_value,
+    clippy::uninlined_format_args,
+    unused_qualifications,
+    clippy::cast_possible_truncation,
+    clippy::cast_precision_loss,
+    clippy::cast_sign_loss,
+    clippy::cast_possible_wrap,
+    clippy::items_after_statements,
+    clippy::float_cmp,
+    clippy::redundant_closure_for_method_calls,
+    clippy::fn_params_excessive_bools,
+    clippy::similar_names,
+    clippy::map_unwrap_or,
+    clippy::unused_async,
+    clippy::case_sensitive_file_extension_comparisons,
+    clippy::manual_string_new,
+    clippy::no_effect_underscore_binding,
+    clippy::option_if_let_else,
+    clippy::single_char_pattern,
+    clippy::ip_constant,
+    clippy::or_fun_call,
+    clippy::cast_lossless,
+    clippy::needless_collect,
+    clippy::single_match_else,
+    clippy::needless_raw_string_hashes,
+    clippy::match_same_arms,
+)]
 mod tests {
     use super::*;
     use axum::http::HeaderValue;

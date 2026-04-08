@@ -3,12 +3,12 @@
 
 mod common;
 
-use sdrtrunk_core::{context_error::Result, context_error};
+use anyhow::Result;
 use axum::http::StatusCode;
 use common::*;
 use reqwest::multipart::Form;
-use sdrtrunk_core::{types::*, Config};
-use sdrtrunk_database::Database;
+use sdrtrunk_protocol::{Config, types::*};
+use sdrtrunk_storage::Database;
 use std::collections::HashMap;
 use std::sync::Arc;
 use tempfile::tempdir;
@@ -703,10 +703,258 @@ async fn test_api_state_management() -> Result<()> {
     let handle = tokio::spawn(async move {
         // Access state from another task
         let _config = &state_clone; // Just verify we can access it
-        Ok::<(), sdrtrunk_core::context_error::ContextError>(())
+        Ok::<(), anyhow::Error>(())
     });
     
     handle.await??;
-    
+
+    Ok(())
+}
+
+/// Test upload with invalid file type (non-audio)
+#[tokio::test]
+async fn test_upload_with_invalid_file_type_returns_400() -> Result<()> {
+    init_test_logging();
+
+    let test_db = TestDatabase::new().await?;
+    let port = find_available_port().await?;
+    let temp_dir = tempdir()?;
+
+    let (config, _config_temp_dir) = TestConfigBuilder::new()
+        .with_database_url(test_db.connection_string().to_string())
+        .with_port(port)
+        .without_auth()
+        .build();
+
+    // Create a text file instead of audio
+    let test_file_path = temp_dir.path().join("test.txt");
+    std::fs::write(&test_file_path, b"This is not an audio file")?;
+
+    let app = sdrtrunk_api::build_router(config.clone(), test_db.database().pool().clone()).await?;
+    let listener = tokio::net::TcpListener::bind(&format!("127.0.0.1:{port}")).await?;
+    let base_url = format!("http://127.0.0.1:{port}");
+
+    let server_handle = tokio::spawn(async move {
+        axum::serve(listener, app).await
+    });
+
+    sleep(Duration::from_millis(200)).await;
+
+    let client = TestHttpClient::new(base_url);
+    let metadata = create_upload_metadata("test_system");
+
+    let upload_response = client.upload_file(&test_file_path, metadata).await?;
+
+    // Should reject non-audio files with 400 Bad Request
+    assert!(
+        upload_response.status() == StatusCode::BAD_REQUEST ||
+        upload_response.status() == StatusCode::UNSUPPORTED_MEDIA_TYPE,
+        "Upload with invalid file type should return 400 or 415, got: {}",
+        upload_response.status()
+    );
+
+    server_handle.abort();
+    Ok(())
+}
+
+/// Test upload with missing required metadata fields
+#[tokio::test]
+async fn test_upload_with_missing_system_id_returns_400() -> Result<()> {
+    init_test_logging();
+
+    let test_db = TestDatabase::new().await?;
+    let port = find_available_port().await?;
+    let temp_dir = tempdir()?;
+
+    let (config, _config_temp_dir) = TestConfigBuilder::new()
+        .with_database_url(test_db.connection_string().to_string())
+        .with_port(port)
+        .without_auth()
+        .build();
+
+    let test_file_path = create_test_mp3_file(temp_dir.path(), "test.mp3")?;
+
+    let app = sdrtrunk_api::build_router(config.clone(), test_db.database().pool().clone()).await?;
+    let listener = tokio::net::TcpListener::bind(&format!("127.0.0.1:{port}")).await?;
+    let base_url = format!("http://127.0.0.1:{port}");
+
+    let server_handle = tokio::spawn(async move {
+        axum::serve(listener, app).await
+    });
+
+    sleep(Duration::from_millis(200)).await;
+
+    let client = reqwest::Client::new();
+    let form = reqwest::multipart::Form::new()
+        .file("audio", &test_file_path)
+        .await?
+        // Intentionally omit system_id
+        .text("talkgroup", "12345");
+
+    let response = client
+        .post(&format!("{base_url}/api/call-upload"))
+        .multipart(form)
+        .send()
+        .await?;
+
+    // Should reject missing required fields with 400
+    assert!(
+        response.status() == StatusCode::BAD_REQUEST,
+        "Upload without system_id should return 400, got: {}",
+        response.status()
+    );
+
+    server_handle.abort();
+    Ok(())
+}
+
+/// Test upload with invalid system ID format (special characters)
+#[tokio::test]
+async fn test_upload_with_invalid_system_id_format_returns_400() -> Result<()> {
+    init_test_logging();
+
+    let test_db = TestDatabase::new().await?;
+    let port = find_available_port().await?;
+    let temp_dir = tempdir()?;
+
+    let (config, _config_temp_dir) = TestConfigBuilder::new()
+        .with_database_url(test_db.connection_string().to_string())
+        .with_port(port)
+        .without_auth()
+        .build();
+
+    let test_file_path = create_test_mp3_file(temp_dir.path(), "test.mp3")?;
+
+    let app = sdrtrunk_api::build_router(config.clone(), test_db.database().pool().clone()).await?;
+    let listener = tokio::net::TcpListener::bind(&format!("127.0.0.1:{port}")).await?;
+    let base_url = format!("http://127.0.0.1:{port}");
+
+    let server_handle = tokio::spawn(async move {
+        axum::serve(listener, app).await
+    });
+
+    sleep(Duration::from_millis(200)).await;
+
+    let client = TestHttpClient::new(base_url);
+    // Invalid system ID with special characters and path traversal attempt
+    let mut metadata = create_upload_metadata("../../../etc/passwd");
+    metadata.insert("system".to_string(), "../../../etc/passwd".to_string());
+
+    let upload_response = client.upload_file(&test_file_path, metadata).await?;
+
+    // Should reject invalid system IDs with 400
+    assert!(
+        upload_response.status().is_client_error(),
+        "Upload with invalid system_id should return 4xx error, got: {}",
+        upload_response.status()
+    );
+
+    server_handle.abort();
+    Ok(())
+}
+
+/// Test upload with oversized file (exceeds max_file_size)
+#[tokio::test]
+async fn test_upload_with_oversized_file_returns_413() -> Result<()> {
+    init_test_logging();
+
+    let test_db = TestDatabase::new().await?;
+    let port = find_available_port().await?;
+    let temp_dir = tempdir()?;
+
+    let (mut config, _config_temp_dir) = TestConfigBuilder::new()
+        .with_database_url(test_db.connection_string().to_string())
+        .with_port(port)
+        .without_auth()
+        .build();
+
+    // Set very small file size limit for testing
+    config.storage.max_file_size_mb = 0; // Effectively 0 bytes
+
+    let test_file_path = create_test_mp3_file(temp_dir.path(), "large_file.mp3")?;
+
+    let app = sdrtrunk_api::build_router(config.clone(), test_db.database().pool().clone()).await?;
+    let listener = tokio::net::TcpListener::bind(&format!("127.0.0.1:{port}")).await?;
+    let base_url = format!("http://127.0.0.1:{port}");
+
+    let server_handle = tokio::spawn(async move {
+        axum::serve(listener, app).await
+    });
+
+    sleep(Duration::from_millis(200)).await;
+
+    let client = TestHttpClient::new(base_url);
+    let metadata = create_upload_metadata("test_system");
+
+    let upload_response = client.upload_file(&test_file_path, metadata).await?;
+
+    // Should reject oversized files with 413 or 400
+    assert!(
+        upload_response.status() == StatusCode::PAYLOAD_TOO_LARGE ||
+        upload_response.status() == StatusCode::BAD_REQUEST,
+        "Upload with oversized file should return 413 or 400, got: {}",
+        upload_response.status()
+    );
+
+    server_handle.abort();
+    Ok(())
+}
+
+/// Test concurrent uploads to same system don't cause conflicts
+#[tokio::test]
+async fn test_concurrent_uploads_maintain_integrity() -> Result<()> {
+    init_test_logging();
+
+    let test_db = TestDatabase::new().await?;
+    let port = find_available_port().await?;
+    let temp_dir = tempdir()?;
+
+    let (config, _config_temp_dir) = TestConfigBuilder::new()
+        .with_database_url(test_db.connection_string().to_string())
+        .with_port(port)
+        .without_auth()
+        .build();
+
+    let app = sdrtrunk_api::build_router(config.clone(), test_db.database().pool().clone()).await?;
+    let listener = tokio::net::TcpListener::bind(&format!("127.0.0.1:{port}")).await?;
+    let base_url = format!("http://127.0.0.1:{port}");
+
+    let server_handle = tokio::spawn(async move {
+        axum::serve(listener, app).await
+    });
+
+    sleep(Duration::from_millis(200)).await;
+
+    // Create multiple test files
+    let mut upload_tasks = vec![];
+
+    for i in 0..5 {
+        let file_path = create_test_mp3_file(temp_dir.path(), &format!("concurrent_{i}.mp3"))?;
+        let base_url = base_url.clone();
+
+        let task = tokio::spawn(async move {
+            let client = TestHttpClient::new(base_url);
+            let metadata = create_upload_metadata(&format!("concurrent_system_{i}"));
+            client.upload_file(&file_path, metadata).await
+        });
+
+        upload_tasks.push(task);
+    }
+
+    // Wait for all uploads to complete
+    let mut success_count = 0;
+    for task in upload_tasks {
+        let result = task.await?;
+        if let Ok(response) = result {
+            if response.status() == StatusCode::OK {
+                success_count += 1;
+            }
+        }
+    }
+
+    // All concurrent uploads should succeed
+    assert_eq!(success_count, 5, "All 5 concurrent uploads should succeed");
+
+    server_handle.abort();
     Ok(())
 }

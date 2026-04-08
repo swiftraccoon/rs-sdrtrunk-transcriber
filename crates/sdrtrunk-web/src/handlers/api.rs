@@ -1,4 +1,5 @@
 //! API proxy handlers for communicating with backend
+#![allow(unreachable_pub)]
 
 use crate::{api_client::ListCallsQuery, state::AppState};
 use axum::extract::ws::{Message, WebSocket};

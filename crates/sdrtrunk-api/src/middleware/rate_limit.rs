@@ -73,7 +73,7 @@ fn get_client_key(headers: &HeaderMap, request: &Request) -> String {
     // 2. Client IP address
     
     // Check for API key in extensions (added by auth middleware)
-    if let Some(api_key) = request.extensions().get::<sdrtrunk_database::models::ApiKeyDb>() {
+    if let Some(api_key) = request.extensions().get::<sdrtrunk_storage::models::ApiKeyDb>() {
         return format!("api_key:{}", api_key.id);
     }
     
@@ -237,7 +237,44 @@ pub async fn cleanup_rate_limiters() {
 }
 
 #[cfg(test)]
-#[allow(clippy::missing_panics_doc)]
+#[allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::panic,
+    clippy::indexing_slicing,
+    clippy::cognitive_complexity,
+    clippy::too_many_lines,
+    clippy::unreadable_literal,
+    clippy::redundant_clone,
+    clippy::missing_panics_doc,
+    clippy::missing_errors_doc,
+    clippy::needless_pass_by_value,
+    clippy::uninlined_format_args,
+    unused_qualifications,
+    clippy::cast_possible_truncation,
+    clippy::cast_precision_loss,
+    clippy::cast_sign_loss,
+    clippy::cast_possible_wrap,
+    clippy::items_after_statements,
+    clippy::float_cmp,
+    clippy::redundant_closure_for_method_calls,
+    clippy::fn_params_excessive_bools,
+    clippy::similar_names,
+    clippy::map_unwrap_or,
+    clippy::unused_async,
+    clippy::case_sensitive_file_extension_comparisons,
+    clippy::manual_string_new,
+    clippy::no_effect_underscore_binding,
+    clippy::option_if_let_else,
+    clippy::single_char_pattern,
+    clippy::ip_constant,
+    clippy::or_fun_call,
+    clippy::cast_lossless,
+    clippy::needless_collect,
+    clippy::single_match_else,
+    clippy::needless_raw_string_hashes,
+    clippy::match_same_arms,
+)]
 mod tests {
     use super::*;
     use axum::http::HeaderValue;
@@ -249,7 +286,7 @@ mod tests {
         let mut request = Request::builder().body(()).unwrap();
         
         // Mock API key in extensions
-        let api_key = sdrtrunk_database::models::ApiKeyDb {
+        let api_key = sdrtrunk_storage::models::ApiKeyDb {
             id: "test-key".to_string(),
             key_hash: "hash".to_string(),
             description: None,

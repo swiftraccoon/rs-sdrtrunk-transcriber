@@ -9,14 +9,16 @@ use axum::{
     response::{IntoResponse, Json, Response},
 };
 use chrono::{DateTime, Utc};
-use sdrtrunk_core::types::RadioCall;
+use rust_decimal::Decimal;
+use sdrtrunk_storage::models::RadioCallDb;
+use sdrtrunk_types::{Frequency, RadioId, SystemId, TalkgroupId};
 use serde_json;
 use std::{net::SocketAddr, sync::Arc};
 use tracing::{error, info, warn};
 use uuid::Uuid;
 
 /// Response for successful upload
-#[derive(serde::Serialize, serde::Deserialize)]
+#[derive(Debug, serde::Serialize, serde::Deserialize)]
 pub struct UploadResponse {
     /// Whether the upload was successful
     pub success: bool,
@@ -27,7 +29,7 @@ pub struct UploadResponse {
 }
 
 /// Response for upload error
-#[derive(serde::Serialize, serde::Deserialize)]
+#[derive(Debug, serde::Serialize, serde::Deserialize)]
 pub struct ErrorResponse {
     /// Whether the upload was successful (always false)
     pub success: bool,
@@ -35,10 +37,10 @@ pub struct ErrorResponse {
     pub error: String,
 }
 
-/// Handle multipart form data upload from Rdio Scanner compatible systems
+/// Handle multipart form data upload from Rdio Scanner compatible systems.
 ///
 /// This endpoint accepts radio call uploads in multipart/form-data format, compatible
-/// with SDRTrunk and Rdio Scanner systems. It handles file validation, storage, database
+/// with `SDRTrunk` and Rdio Scanner systems. It handles file validation, storage, database
 /// insertion, and system statistics updates.
 ///
 /// # Arguments
@@ -79,6 +81,14 @@ pub struct ErrorResponse {
 ///
 /// 12345
 /// ```
+#[allow(
+    clippy::too_many_lines,
+    clippy::cognitive_complexity,
+    clippy::cast_precision_loss,
+    clippy::cast_possible_wrap,
+    clippy::indexing_slicing,
+    clippy::missing_panics_doc
+)]
 pub async fn handle_call_upload(
     State(state): State<Arc<AppState>>,
     ConnectInfo(addr): ConnectInfo<SocketAddr>,
@@ -126,19 +136,21 @@ pub async fn handle_call_upload(
 
     // Parse multipart form data with proper error handling
     let mut metadata = CallMetadata::default();
-    let mut audio_data: Option<Vec<u8>> = None;
+    // Use Bytes instead of Vec<u8> to avoid copying the buffer (saves memory for large uploads)
+    let mut audio_data: Option<axum::body::Bytes> = None;
     let mut audio_filename: Option<String> = None;
 
     loop {
         match multipart.next_field().await {
             Ok(Some(field)) => {
                 let name = field.name().unwrap_or("").to_string();
+                tracing::debug!("Multipart field received: name={:?}", name);
 
                 match name.as_str() {
                     "audio" => {
                         audio_filename = field.file_name().map(String::from);
                         match field.bytes().await {
-                            Ok(data) => audio_data = Some(data.to_vec()),
+                            Ok(data) => audio_data = Some(data),
                             Err(e) => {
                                 error!("Failed to read audio data: {}", e);
                                 let (status, json_error) = upload_error(
@@ -310,7 +322,7 @@ pub async fn handle_call_upload(
             .status(StatusCode::OK)
             .header("content-type", "text/plain")
             .body(Body::from(message))
-            .unwrap()
+            .unwrap_or_else(|_| Response::new(Body::from(message)))
             .into_response();
     }
 
@@ -327,6 +339,13 @@ pub async fn handle_call_upload(
         .await;
         return (status, json_error).into_response();
     };
+
+    tracing::debug!(
+        "Parsed metadata: system_id={:?}, talkgroup_id={:?}, frequency={:?}",
+        metadata.system_id,
+        metadata.talkgroup_id,
+        metadata.frequency
+    );
 
     let Some(system_id) = metadata.system_id else {
         let (status, json_error) = upload_error(
@@ -365,7 +384,7 @@ pub async fn handle_call_upload(
             key.hash(&mut hasher);
             let key_hash = format!("{:x}", hasher.finish());
 
-            match sdrtrunk_database::validate_api_key(&state.pool, &key_hash).await {
+            match sdrtrunk_storage::validate_api_key(&state.pool, &key_hash).await {
                 Ok(Some(api_key)) => {
                     let api_key_uuid = api_key.id;
                     api_key_id = Some(api_key_uuid.clone());
@@ -457,8 +476,8 @@ pub async fn handle_call_upload(
     let date = metadata.datetime.unwrap_or_else(Utc::now).date_naive();
     let storage_path = state.get_storage_path(&system_id, date);
 
-    // Create directory structure
-    if let Err(e) = std::fs::create_dir_all(&storage_path) {
+    // Create directory structure (async to avoid blocking Tokio worker)
+    if let Err(e) = tokio::fs::create_dir_all(&storage_path).await {
         error!("Failed to create storage directory: {}", e);
         let (status, json_error) = upload_error(
             &state,
@@ -472,15 +491,19 @@ pub async fn handle_call_upload(
         return (status, json_error).into_response();
     }
 
-    // Save audio file with unique name to avoid conflicts
-    let unique_filename = format!(
-        "{}_{}",
-        chrono::Utc::now().format("%Y%m%d_%H%M%S_%f"),
-        filename
-    );
+    // Save audio file with a meaningful name derived from call metadata
+    let tg_str = metadata
+        .talkgroup_id
+        .map_or("unknown".to_string(), |t| t.to_string());
+    let ts = metadata
+        .datetime
+        .unwrap_or_else(Utc::now)
+        .format("%Y%m%d_%H%M%S");
+    let unique_filename = format!("{system_id}_TG{tg_str}_{ts}.{file_extension}");
     let file_path = storage_path.join(&unique_filename);
 
-    if let Err(e) = std::fs::write(&file_path, &audio) {
+    // Write file asynchronously (critical: avoids blocking Tokio worker for large files up to 100MB)
+    if let Err(e) = tokio::fs::write(&file_path, &audio).await {
         error!("Failed to save audio file: {}", e);
         let (status, json_error) = upload_error(
             &state,
@@ -499,48 +522,54 @@ pub async fn handle_call_upload(
         .duration
         .or_else(|| audio_utils::calculate_audio_duration(&audio, Some(&filename)));
 
-    // Create RadioCall record
-    let radio_call = RadioCall {
-        id: None,
+    // Create RadioCallDb record
+    let radio_call = RadioCallDb {
+        id: Uuid::new_v4(),
         created_at: Utc::now(),
         call_timestamp: metadata.datetime.unwrap_or_else(Utc::now),
-        system_id: system_id.clone(),
+        system_id: SystemId::new(&system_id).unwrap_or_else(|_| {
+            // SAFETY: "unknown" is a valid static system ID
+            #[allow(clippy::expect_used)]
+            SystemId::new("unknown").expect("static system ID 'unknown' is always valid")
+        }),
         system_label: metadata.system_label.clone(),
-        frequency: metadata.frequency,
-        talkgroup_id: metadata.talkgroup_id,
+        frequency: metadata.frequency.and_then(|f| Frequency::new(f).ok()),
+        talkgroup_id: metadata
+            .talkgroup_id
+            .and_then(|id| TalkgroupId::new(id).ok()),
         talkgroup_label: metadata.talkgroup_label,
         talkgroup_group: metadata.talkgroup_group,
         talkgroup_tag: metadata.talkgroup_tag,
-        source_radio_id: metadata.source_radio_id,
+        source_radio_id: metadata
+            .source_radio_id
+            .and_then(|id| RadioId::new(id).ok()),
         talker_alias: metadata.talker_alias,
         audio_filename: Some(unique_filename.clone()),
         audio_file_path: Some(file_path.to_string_lossy().to_string()),
         audio_size_bytes: Some(audio.len() as i64),
-        duration_seconds: duration,
-        upload_ip: Some(client_ip.to_string()),
+        audio_content_type: None,
+        duration_seconds: duration.and_then(|d| Decimal::try_from(d).ok()),
+        upload_ip: Some(sqlx::types::ipnetwork::IpNetwork::from(client_ip)),
         upload_timestamp: Utc::now(),
         upload_api_key_id: api_key_id,
-        patches: metadata.patches,
-        frequencies: metadata.frequencies,
-        sources: metadata.sources,
-        transcription_status: sdrtrunk_core::types::TranscriptionStatus::Pending,
+        patches: metadata.patches.map(|v| v.to_string()),
+        frequencies: metadata.frequencies.map(|v| v.to_string()),
+        sources: metadata.sources.map(|v| v.to_string()),
+        transcription_status: Some("pending".to_string()),
         transcription_text: None,
         transcription_confidence: None,
-        transcription_error: None,
-        transcription_started_at: None,
-        transcription_completed_at: None,
+        transcription_language: None,
         speaker_count: None,
         speaker_segments: None,
-        transcription_segments: None,
     };
 
     // Save to database
-    let call_id = match sdrtrunk_database::insert_radio_call(&state.pool, &radio_call).await {
+    let call_id = match sdrtrunk_storage::insert_radio_call(&state.pool, &radio_call).await {
         Ok(id) => id,
         Err(e) => {
             error!("Failed to save radio call to database: {}", e);
-            // Try to clean up the file
-            let _ = std::fs::remove_file(&file_path);
+            // Try to clean up the file (async to avoid blocking)
+            let _ = tokio::fs::remove_file(&file_path).await;
             let (status, json_error) = upload_error(
                 &state,
                 client_ip,
@@ -558,94 +587,75 @@ pub async fn handle_call_upload(
     if let Some(ref transcription_config) = state.config.transcription
         && transcription_config.enabled
     {
-        if let Some(ref transcription_pool) = state.transcription_pool {
-            let transcription_request = sdrtrunk_transcriber::TranscriptionRequest::new(
-                call_id,
-                std::path::PathBuf::from(&file_path),
-            );
+        let params = sdrtrunk_storage::jobs::EnqueueParams {
+            call_id,
+            audio_path: Some(file_path.to_string_lossy().to_string()),
+            audio_data: Some(audio.to_vec()),
+            priority: 0,
+            options: serde_json::json!({"language": "en", "diarize": true}),
+            timeout_seconds: i32::try_from(transcription_config.timeout_seconds).unwrap_or(300),
+        };
 
-            // Submit to transcription service using non-blocking try_submit
-            // Log queue status for monitoring
-            let queue_len = transcription_pool.queue_len();
-            let queue_capacity = transcription_pool.queue_capacity().unwrap_or(0);
-
-            match transcription_pool.try_submit(transcription_request) {
-                Ok(()) => {
-                    info!(
-                        "Transcription request submitted for call {} (queue: {}/{})",
-                        call_id,
-                        queue_len + 1,
-                        queue_capacity
-                    );
-                }
-                Err(e) => {
-                    error!(
-                        "Failed to submit transcription for call {} (queue full: {}/{}): {}",
-                        call_id, queue_len, queue_capacity, e
-                    );
-                    // Update database to mark transcription as failed due to queue full
-                    let db_pool = state.pool.clone();
-                    tokio::spawn(async move {
-                        if let Err(db_err) = sdrtrunk_database::update_transcription_status(
-                            &db_pool, call_id, "failed",
-                        )
-                        .await
-                        {
-                            error!(
-                                "Failed to update transcription status for call {}: {}",
-                                call_id, db_err
-                            );
-                        }
-                    });
-                }
+        match sdrtrunk_storage::jobs::JobQueue::enqueue(&state.pool, &params).await {
+            Ok(job_id) => {
+                info!("Transcription job {job_id} enqueued for call {call_id}");
             }
-        } else {
-            warn!("Transcription enabled but no worker pool initialized");
+            Err(e) => {
+                error!("Failed to enqueue transcription for call {call_id}: {e}");
+            }
         }
     }
 
-    // Update system statistics (non-critical, log errors but don't fail)
-    if let Err(e) =
-        sdrtrunk_database::update_system_stats(&state.pool, &system_id, metadata.system_label).await
-    {
-        warn!("Failed to update system stats: {}", e);
-    }
+    // Update system statistics (non-critical, spawn as background task to avoid blocking response)
+    let pool_clone = state.pool.clone();
+    let system_id_clone = system_id.clone();
+    let system_label_clone = metadata.system_label.clone();
+    drop(tokio::spawn(async move {
+        if let Err(e) =
+            sdrtrunk_storage::update_system_stats(&pool_clone, &system_id_clone, system_label_clone)
+                .await
+        {
+            warn!("Failed to update system stats: {}", e);
+        }
+    }));
 
-    // Log successful upload (non-critical)
-    let params = sdrtrunk_database::UploadLogParams {
+    // Log successful upload (non-critical, spawn as background task to avoid blocking response)
+    let pool_clone = state.pool.clone();
+    let log_params = sdrtrunk_storage::UploadLogParams {
         client_ip,
         user_agent,
         api_key_id: metadata.api_key,
         system_id: Some(system_id.clone()),
         success: true,
         error_message: None,
-        filename: Some(unique_filename),
+        filename: Some(unique_filename.clone()),
         file_size: Some(audio.len() as i64),
     };
-    if let Err(e) = sdrtrunk_database::insert_upload_log(&state.pool, params).await {
-        warn!("Failed to log upload: {}", e);
-    }
+    drop(tokio::spawn(async move {
+        if let Err(e) = sdrtrunk_storage::insert_upload_log(&pool_clone, log_params).await {
+            warn!("Failed to log upload: {}", e);
+        }
+    }));
 
     // Create formatted log with useful details
-    let talkgroup_info = if let Some(tg_id) = radio_call.talkgroup_id {
-        if let Some(ref label) = radio_call.talkgroup_label {
-            format!("TG {} ({})", tg_id, label)
-        } else {
-            format!("TG {}", tg_id)
-        }
-    } else {
-        "Unknown TG".to_string()
-    };
+    let talkgroup_info = radio_call.talkgroup_id.map_or_else(
+        || "Unknown TG".to_string(),
+        |tg_id| {
+            radio_call.talkgroup_label.as_ref().map_or_else(
+                || format!("TG {tg_id}"),
+                |label| format!("TG {tg_id} ({label})"),
+            )
+        },
+    );
 
-    let freq_mhz = radio_call
-        .frequency
-        .map(|f| format!("{:.4} MHz", f as f64 / 1_000_000.0))
-        .unwrap_or_else(|| "Unknown Freq".to_string());
+    let freq_mhz = radio_call.frequency.map_or_else(
+        || "Unknown Freq".to_string(),
+        |f| format!("{:.4} MHz", f.as_hz() as f64 / 1_000_000.0),
+    );
 
-    let duration_str = duration
-        .map(|d| format!("{:.2}s", d))
-        .unwrap_or_else(|| "N/A".to_string());
+    let duration_str = duration.map_or_else(|| "N/A".to_string(), |d| format!("{d:.2}s"));
 
+    #[allow(clippy::cast_precision_loss)]
     let file_size_kb = audio.len() as f64 / 1024.0;
 
     info!(
@@ -682,13 +692,13 @@ pub async fn handle_call_upload(
             .status(StatusCode::OK)
             .header("content-type", "text/plain")
             .body(Body::from("Call imported successfully."))
-            .unwrap()
+            .unwrap_or_else(|_| Response::new(Body::from("Call imported successfully.")))
             .into_response()
     }
 }
 
 /// Helper function to handle upload errors with proper logging
-#[allow(clippy::too_many_arguments)]
+#[allow(clippy::too_many_arguments, clippy::unused_async)]
 async fn upload_error(
     state: &Arc<AppState>,
     client_ip: std::net::IpAddr,
@@ -704,8 +714,9 @@ async fn upload_error(
         client_ip
     );
 
-    // Log failed upload (best effort - don't fail if logging fails)
-    let params = sdrtrunk_database::UploadLogParams {
+    // Log failed upload (spawn as background task to avoid delaying error response)
+    let pool_clone = state.pool.clone();
+    let log_params = sdrtrunk_storage::UploadLogParams {
         client_ip,
         user_agent,
         api_key_id: api_key,
@@ -715,9 +726,11 @@ async fn upload_error(
         filename: None,
         file_size: None,
     };
-    if let Err(e) = sdrtrunk_database::insert_upload_log(&state.pool, params).await {
-        warn!("Failed to log upload error: {}", e);
-    }
+    drop(tokio::spawn(async move {
+        if let Err(e) = sdrtrunk_storage::insert_upload_log(&pool_clone, log_params).await {
+            warn!("Failed to log upload error: {}", e);
+        }
+    }));
 
     (
         StatusCode::BAD_REQUEST,
@@ -750,8 +763,45 @@ struct CallMetadata {
 }
 
 #[cfg(test)]
-#[allow(clippy::missing_panics_doc)]
-#[allow(clippy::field_reassign_with_default)]
+#[allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::panic,
+    clippy::indexing_slicing,
+    clippy::cognitive_complexity,
+    clippy::too_many_lines,
+    clippy::unreadable_literal,
+    clippy::redundant_clone,
+    clippy::missing_panics_doc,
+    clippy::missing_errors_doc,
+    clippy::needless_pass_by_value,
+    clippy::uninlined_format_args,
+    unused_qualifications,
+    clippy::cast_possible_truncation,
+    clippy::cast_precision_loss,
+    clippy::cast_sign_loss,
+    clippy::cast_possible_wrap,
+    clippy::items_after_statements,
+    clippy::float_cmp,
+    clippy::redundant_closure_for_method_calls,
+    clippy::fn_params_excessive_bools,
+    clippy::similar_names,
+    clippy::map_unwrap_or,
+    clippy::unused_async,
+    clippy::case_sensitive_file_extension_comparisons,
+    clippy::manual_string_new,
+    clippy::no_effect_underscore_binding,
+    clippy::option_if_let_else,
+    clippy::single_char_pattern,
+    clippy::ip_constant,
+    clippy::or_fun_call,
+    clippy::cast_lossless,
+    clippy::needless_collect,
+    clippy::single_match_else,
+    clippy::needless_raw_string_hashes,
+    clippy::match_same_arms,
+    clippy::field_reassign_with_default
+)]
 mod tests {
     use super::*;
     use axum::http::StatusCode;
@@ -1839,8 +1889,8 @@ mod tests {
     #[tokio::test]
     async fn test_upload_error_function() {
         use crate::state::AppState;
-        use sdrtrunk_core::Config;
-        use sdrtrunk_database::Database;
+        use sdrtrunk_protocol::Config;
+        use sdrtrunk_storage::Database;
         use std::net::{IpAddr, Ipv4Addr};
         use std::sync::Arc;
 
@@ -1850,7 +1900,7 @@ mod tests {
 
         // Try to create database - if it fails, just test the function signature
         if let Ok(db) = Database::new(&config).await
-            && db.migrate().await.is_ok()
+            && db.init_schema().await.is_ok()
         {
             let state = Arc::new(AppState::new(config, db.pool().clone()).unwrap());
             let client_ip = IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1));

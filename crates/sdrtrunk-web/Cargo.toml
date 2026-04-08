@@ -6,6 +6,7 @@ edition.workspace = true
 license.workspace = true
 rust-version.workspace = true
 description = "Web interface for SDRTrunk transcriber"
+publish = false
 repository = "https://github.com/swiftraccoon/rs-sdrtrunk-transcriber"
 readme = "../../README.md"
 keywords = ["sdr", "web", "leptos", "frontend", "transcription"]
@@ -17,19 +18,19 @@ path = "src/main.rs"
 
 [dependencies]
 # Internal dependencies
-sdrtrunk-core = { path = "../sdrtrunk-core" }
+sdrtrunk-protocol = { path = "../sdrtrunk-protocol" }
+sdrtrunk-types = { path = "../sdrtrunk-types" }
 sdrtrunk-api = { path = "../sdrtrunk-api" }
-sdrtrunk-database = { path = "../sdrtrunk-database" }
+
+# Configuration loading
+config = { workspace = true }
 
 # Web framework - Leptos with server-side rendering
 leptos = { workspace = true }
-leptos_axum = { workspace = true }
 leptos_router = { workspace = true }
 
 # Server framework (reuse existing Axum)
 axum = { workspace = true }
-tower = { workspace = true }
-tower-http = { workspace = true }
 
 # Async runtime
 tokio = { workspace = true }
@@ -55,11 +56,10 @@ chrono = { workspace = true }
 # UUID (reuse workspace)
 uuid = { workspace = true }
 
-# Decimal precision (reuse workspace)
-rust_decimal = { workspace = true }
-
 # URL encoding
 urlencoding = { workspace = true }
+gloo-net = { version = "0.7.0", features = ["http"] }
+send_wrapper = "0.6.0"
 
 [dev-dependencies]
 tokio-test = "0.4"
@@ -69,3 +69,6 @@ default = ["csr"]
 csr = ["leptos/csr"]
 ssr = ["leptos/ssr"]
 hydrate = ["leptos/hydrate"]
+
+[lints]
+workspace = true

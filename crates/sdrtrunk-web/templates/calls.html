@@ -5,87 +5,167 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>SDRTrunk Transcriber - Radio Calls</title>
     <style>
+        @import url('https://fonts.googleapis.com/css2?family=Cinzel:wght@400;600;700&family=Inter:wght@300;400;500;600;700&display=swap');
+
         :root {
-            --bg-color: #f5f5f5;
-            --card-bg: white;
-            --text-color: #2c3e50;
-            --header-bg: #2c3e50;
-            --header-text: white;
-            --accent-color: #3498db;
-            --success-color: #27ae60;
-            --warning-color: #f39c12;
-            --shadow: 0 2px 4px rgba(0,0,0,0.1);
-            --border-color: #ddd;
-            --transcription-bg: rgba(52, 152, 219, 0.1);
-            --transcription-border: #3498db;
-            --processing-bg: rgba(243, 156, 18, 0.1);
-            --processing-border: #f39c12;
-            --speaker-color: #3498db;
+            --bg-color: #08060e;
+            --card-bg: rgba(15,10,30,0.6);
+            --card-bg-solid: #0f0a1e;
+            --text-color: #d4cfe6;
+            --text-muted: #8b8aa0;
+            --text-dim: #6b6889;
+            --header-bg: rgba(8,6,14,0.85);
+            --header-text: #d4cfe6;
+            --accent-color: #7c3aed;
+            --accent-hover: #8b5cf6;
+            --accent-soft: rgba(139,92,246,0.08);
+            --gold-color: #c9a227;
+            --success-color: #10b981;
+            --warning-color: #c9a227;
+            --error-color: #ec4899;
+            --shadow: 0 4px 20px rgba(0,0,0,0.3);
+            --border-color: rgba(139,92,246,0.12);
+            --border-subtle: rgba(139,92,246,0.08);
+            --transcription-bg: rgba(124,58,237,0.06);
+            --transcription-border: #7c3aed;
+            --speaker-color: #a78bfa;
+            --input-bg: rgba(255,255,255,0.04);
+            --input-border: rgba(139,92,246,0.15);
+            --glow-purple: rgba(88,28,135,0.15);
+            --glow-blue: rgba(37,99,235,0.06);
         }
 
-        [data-theme="dark"] {
-            --bg-color: #1a1a1a;
-            --card-bg: #2d3748;
-            --text-color: #e2e8f0;
-            --header-bg: #1a202c;
-            --header-text: #e2e8f0;
-            --accent-color: #3182ce;
-            --success-color: #38a169;
-            --warning-color: #dd6b20;
-            --shadow: 0 2px 4px rgba(0,0,0,0.3);
-            --border-color: #4a5568;
-            --transcription-bg: rgba(49, 130, 206, 0.15);
-            --transcription-border: #3182ce;
-            --processing-bg: rgba(221, 107, 32, 0.15);
-            --processing-border: #dd6b20;
-            --speaker-color: #63b3ed;
+        [data-theme="light"] {
+            --bg-color: #f0ecff;
+            --card-bg: rgba(255,255,255,0.85);
+            --card-bg-solid: #ffffff;
+            --text-color: #1e1b4b;
+            --text-muted: #5b587a;
+            --text-dim: #8b8aa0;
+            --header-bg: rgba(15,10,30,0.95);
+            --header-text: #d4cfe6;
+            --accent-color: #7c3aed;
+            --accent-hover: #6d28d9;
+            --accent-soft: rgba(124,58,237,0.08);
+            --gold-color: #a07d1c;
+            --success-color: #059669;
+            --warning-color: #a07d1c;
+            --error-color: #db2777;
+            --shadow: 0 2px 12px rgba(124,58,237,0.08);
+            --border-color: rgba(124,58,237,0.12);
+            --border-subtle: rgba(124,58,237,0.06);
+            --transcription-bg: rgba(124,58,237,0.05);
+            --transcription-border: #7c3aed;
+            --speaker-color: #7c3aed;
+            --input-bg: rgba(124,58,237,0.04);
+            --input-border: rgba(124,58,237,0.2);
+            --glow-purple: transparent;
+            --glow-blue: transparent;
         }
 
-        body { font-family: Arial, sans-serif; margin: 0; padding: 20px; background: var(--bg-color); color: var(--text-color); transition: all 0.3s ease; }
-        .header { background: var(--header-bg); color: var(--header-text); padding: 1rem; margin: -20px -20px 20px; display: flex; justify-content: space-between; align-items: center; }
-        .nav { display: flex; gap: 1rem; margin-top: 1rem; }
-        .nav a { color: var(--header-text); text-decoration: none; padding: 0.5rem 1rem; border-radius: 4px; }
-        .nav a:hover { background: rgba(255,255,255,0.1); }
-        .nav a.active { background: rgba(255,255,255,0.2); }
-        .theme-toggle { background: var(--accent-color); color: white; border: none; padding: 0.5rem 1rem; border-radius: 4px; cursor: pointer; font-size: 0.9em; }
-        .theme-toggle:hover { opacity: 0.8; }
-        .search-filters { background: var(--card-bg); color: var(--text-color); padding: 1rem; border-radius: 8px; margin-bottom: 1rem; box-shadow: var(--shadow); }
-        .filter-row { display: flex; gap: 1rem; margin-bottom: 1rem; flex-wrap: wrap; }
-        .filter-row input, .filter-row select { padding: 0.5rem; border: 1px solid var(--border-color); border-radius: 4px; background: var(--card-bg); color: var(--text-color); }
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        body {
+            font-family: 'Inter', sans-serif;
+            padding: 0;
+            background: var(--bg-color);
+            color: var(--text-color);
+            min-height: 100vh;
+            overflow-x: hidden;
+            transition: background 0.3s ease, color 0.3s ease;
+        }
+        body::before {
+            content: '';
+            position: fixed; top: -200px; left: 50%; transform: translateX(-50%);
+            width: 900px; height: 600px;
+            background: radial-gradient(ellipse, var(--glow-purple) 0%, rgba(30,27,75,0.08) 40%, transparent 70%);
+            pointer-events: none; z-index: 0;
+        }
+        body::after {
+            content: '';
+            position: fixed; bottom: -300px; right: -200px;
+            width: 800px; height: 800px;
+            background: radial-gradient(ellipse, var(--glow-blue) 0%, transparent 60%);
+            pointer-events: none; z-index: 0;
+        }
+
+        .page-content { position: relative; z-index: 1; max-width: 1400px; margin: 0 auto; padding: 28px 32px; }
+
+        .header {
+            position: sticky; top: 0; z-index: 100;
+            background: var(--header-bg);
+            backdrop-filter: blur(20px) saturate(1.5);
+            -webkit-backdrop-filter: blur(20px) saturate(1.5);
+            border-bottom: 1px solid var(--border-color);
+            color: var(--header-text);
+            padding: 0 32px;
+            display: flex; justify-content: space-between; align-items: center; height: 56px;
+        }
+        .header h1 {
+            font-family: 'Cinzel', serif; font-size: 15px; font-weight: 700; letter-spacing: 2px;
+            background: linear-gradient(135deg, #c9a227 0%, #f6d365 40%, #c9a227 80%);
+            -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;
+            text-transform: uppercase; white-space: nowrap;
+        }
+        .nav { display: flex; gap: 4px; }
+        .nav a { color: var(--text-muted); text-decoration: none; font-size: 13px; font-weight: 500; padding: 8px 14px; border-radius: 6px; transition: all 0.2s; }
+        .nav a:hover { color: var(--text-color); background: var(--accent-soft); }
+        .nav a.active { color: var(--gold-color); background: rgba(201,162,39,0.08); }
+        .theme-toggle { background: transparent; color: var(--text-muted); border: 1px solid var(--border-color); padding: 6px 14px; border-radius: 6px; cursor: pointer; font-size: 13px; font-weight: 500; transition: all 0.2s; }
+        .theme-toggle:hover { color: var(--text-color); border-color: var(--accent-color); }
+
+        h2 { font-family: 'Cinzel', serif; font-size: 20px; font-weight: 600; color: var(--text-color); margin: 20px 0 16px; letter-spacing: 0.5px; }
+
+        .search-filters { background: var(--card-bg); color: var(--text-color); padding: 1rem; border-radius: 10px; margin-bottom: 1rem; border: 1px solid var(--border-subtle); backdrop-filter: blur(10px); }
+        .filter-row { display: flex; gap: 0.75rem; margin-bottom: 0.75rem; flex-wrap: wrap; }
+        .filter-row input, .filter-row select {
+            padding: 7px 14px; border: 1px solid var(--input-border); border-radius: 8px;
+            background: var(--input-bg); color: var(--text-color); font-family: 'Inter', sans-serif; font-size: 13px;
+            outline: none; transition: all 0.2s;
+        }
+        .filter-row input:focus, .filter-row select:focus { border-color: rgba(139,92,246,0.4); box-shadow: 0 0 20px rgba(139,92,246,0.08); }
         .filter-row input[type="text"] { flex: 1; min-width: 200px; }
-        .btn { background: var(--accent-color); color: white; border: none; padding: 0.5rem 1rem; border-radius: 4px; cursor: pointer; }
-        .btn:hover { opacity: 0.8; }
-        .call-list { background: var(--card-bg); color: var(--text-color); border-radius: 8px; box-shadow: var(--shadow); }
-        .call-list-header { display: grid; grid-template-columns: 1.5fr 1fr 1fr 1fr 1fr 2fr 1fr; gap: 1rem; padding: 1rem; background: var(--border-color); font-weight: bold; border-bottom: 1px solid var(--border-color); color: var(--text-color); }
-        .call-row { display: grid; grid-template-columns: 1.5fr 1fr 1fr 1fr 1fr 2fr 1fr; gap: 1rem; padding: 1rem; border-bottom: 1px solid var(--border-color); }
-        .call-row:hover { background: rgba(52, 152, 219, 0.1); }
-        .status-pending { color: #f39c12; }
-        .status-completed { color: #27ae60; }
-        .status-failed { color: #e74c3c; }
+        .btn {
+            background: linear-gradient(135deg, rgba(124,58,237,0.15), rgba(37,99,235,0.15));
+            color: var(--text-color); border: 1px solid var(--border-color);
+            padding: 7px 16px; border-radius: 8px; cursor: pointer;
+            font-size: 12px; font-weight: 500; font-family: 'Inter', sans-serif; transition: all 0.2s;
+        }
+        .btn:hover { border-color: var(--accent-color); background: linear-gradient(135deg, rgba(124,58,237,0.25), rgba(37,99,235,0.25)); }
+        .call-list { background: var(--card-bg); color: var(--text-color); border-radius: 12px; border: 1px solid var(--border-subtle); backdrop-filter: blur(10px); overflow: hidden; }
+        .call-list-header {
+            display: grid; grid-template-columns: 1.5fr 1fr 1fr 1fr 1fr 2fr 1fr; gap: 1rem; padding: 12px 16px;
+            background: rgba(139,92,246,0.06); font-weight: 600; font-size: 11px; letter-spacing: 1px; text-transform: uppercase;
+            border-bottom: 1px solid var(--border-color); color: var(--text-muted);
+        }
+        .call-row { display: grid; grid-template-columns: 1.5fr 1fr 1fr 1fr 1fr 2fr 1fr; gap: 1rem; padding: 12px 16px; border-bottom: 1px solid var(--border-subtle); font-size: 13px; transition: all 0.15s; }
+        .call-row:hover { background: var(--accent-soft); }
+        .status-pending { color: var(--warning-color); }
+        .status-completed { color: var(--success-color); }
+        .status-failed { color: var(--error-color); }
         .pagination { text-align: center; margin: 1rem; }
-        .empty-state { text-align: center; padding: 2rem; color: #7f8c8d; }
-        .transcription-text { max-width: 300px; font-family: monospace; font-size: 0.9em; white-space: pre-wrap; overflow: hidden; text-overflow: ellipsis; }
-        .confidence-score { font-size: 0.8em; padding: 2px 6px; border-radius: 3px; color: white; font-weight: bold; }
-        .confidence-high { background: #27ae60; }
-        .confidence-medium { background: #f39c12; }
-        .confidence-low { background: #e74c3c; }
-        .speaker-label { background: #3498db; color: white; padding: 1px 4px; border-radius: 2px; font-size: 0.7em; margin-right: 4px; }
+        .empty-state { text-align: center; padding: 2rem; color: var(--text-dim); }
+        .transcription-text { max-width: 300px; font-size: 13px; white-space: pre-wrap; overflow: hidden; text-overflow: ellipsis; color: #b8b4d0; }
+        .confidence-score { font-size: 11px; padding: 2px 8px; border-radius: 4px; font-weight: 600; }
+        .confidence-high { background: rgba(16,185,129,0.15); color: var(--success-color); border: 1px solid rgba(16,185,129,0.2); }
+        .confidence-medium { background: rgba(201,162,39,0.15); color: var(--warning-color); border: 1px solid rgba(201,162,39,0.2); }
+        .confidence-low { background: rgba(236,72,153,0.15); color: var(--error-color); border: 1px solid rgba(236,72,153,0.2); }
+        .speaker-label { color: var(--speaker-color); font-weight: 600; font-size: 11px; margin-right: 4px; }
     </style>
 </head>
 <body>
     <div class="header">
-        <div>
-            <h1 style="margin: 0;">SDRTrunk Transcriber</h1>
-            <nav class="nav">
-                <a href="/">Dashboard</a>
-                <a href="/calls" class="active">Calls</a>
-                <a href="/stats">Statistics</a>
-                <a href="/admin">Admin</a>
-            </nav>
-        </div>
-        <button class="theme-toggle" onclick="toggleTheme()">🌙 Dark Mode</button>
+        <h1>SDRTrunk Transcriber</h1>
+        <nav class="nav">
+            <a href="/">Dashboard</a>
+            <a href="/calls" class="active">Calls</a>
+            <a href="/stats">Statistics</a>
+            <a href="/admin">Admin</a>
+        </nav>
+        <button class="theme-toggle" onclick="toggleTheme()">Light Mode</button>
     </div>
 
+    <div class="page-content">
     <h2>Radio Calls</h2>
 
     <div class="search-filters">
@@ -131,9 +211,10 @@
 
     <div class="pagination">
         <button class="btn" disabled>Previous</button>
-        <span>Page 1 of 1</span>
+        <span style="color: var(--text-dim); font-size: 13px;">Page 1 of 1</span>
         <button class="btn" disabled>Next</button>
     </div>
+    </div><!-- end page-content -->
 
     <script>
         async function searchCalls() {
@@ -391,14 +472,14 @@
             const button = document.querySelector('.theme-toggle');
             const currentTheme = body.getAttribute('data-theme');
 
-            if (currentTheme === 'dark') {
+            if (currentTheme === 'light') {
                 body.removeAttribute('data-theme');
-                button.textContent = '🌙 Dark Mode';
-                localStorage.setItem('theme', 'light');
-            } else {
-                body.setAttribute('data-theme', 'dark');
-                button.textContent = '☀️ Light Mode';
+                button.textContent = 'Light Mode';
                 localStorage.setItem('theme', 'dark');
+            } else {
+                body.setAttribute('data-theme', 'light');
+                button.textContent = 'Dark Mode';
+                localStorage.setItem('theme', 'light');
             }
         }
 
@@ -407,9 +488,9 @@
             const body = document.body;
             const button = document.querySelector('.theme-toggle');
 
-            if (savedTheme === 'dark') {
-                body.setAttribute('data-theme', 'dark');
-                button.textContent = '☀️ Light Mode';
+            if (savedTheme === 'light') {
+                body.setAttribute('data-theme', 'light');
+                button.textContent = 'Dark Mode';
             }
         }
 

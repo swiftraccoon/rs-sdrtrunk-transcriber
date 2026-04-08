@@ -148,7 +148,7 @@ where
 #[derive(Debug, Clone)]
 pub struct CurrentUser {
     /// API key information
-    pub api_key: sdrtrunk_database::models::ApiKeyDb,
+    pub api_key: sdrtrunk_storage::models::ApiKeyDb,
 }
 
 #[async_trait]
@@ -162,7 +162,7 @@ where
         // Get API key from request extensions (added by auth middleware)
         let api_key = parts
             .extensions
-            .get::<sdrtrunk_database::models::ApiKeyDb>()
+            .get::<sdrtrunk_storage::models::ApiKeyDb>()
             .cloned()
             .ok_or_else(|| {
                 ExtractorError::unauthorized("Authentication required")
@@ -261,7 +261,44 @@ where
 }
 
 #[cfg(test)]
-#[allow(clippy::missing_panics_doc)]
+#[allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::panic,
+    clippy::indexing_slicing,
+    clippy::cognitive_complexity,
+    clippy::too_many_lines,
+    clippy::unreadable_literal,
+    clippy::redundant_clone,
+    clippy::missing_panics_doc,
+    clippy::missing_errors_doc,
+    clippy::needless_pass_by_value,
+    clippy::uninlined_format_args,
+    unused_qualifications,
+    clippy::cast_possible_truncation,
+    clippy::cast_precision_loss,
+    clippy::cast_sign_loss,
+    clippy::cast_possible_wrap,
+    clippy::items_after_statements,
+    clippy::float_cmp,
+    clippy::redundant_closure_for_method_calls,
+    clippy::fn_params_excessive_bools,
+    clippy::similar_names,
+    clippy::map_unwrap_or,
+    clippy::unused_async,
+    clippy::case_sensitive_file_extension_comparisons,
+    clippy::manual_string_new,
+    clippy::no_effect_underscore_binding,
+    clippy::option_if_let_else,
+    clippy::single_char_pattern,
+    clippy::ip_constant,
+    clippy::or_fun_call,
+    clippy::cast_lossless,
+    clippy::needless_collect,
+    clippy::single_match_else,
+    clippy::needless_raw_string_hashes,
+    clippy::match_same_arms,
+)]
 mod tests {
     use super::*;
     use axum::http::{HeaderMap, HeaderValue};
@@ -448,7 +485,7 @@ mod tests {
         let mut parts = create_test_parts_with_headers(headers);
         
         // Add mock API key to extensions
-        let api_key = sdrtrunk_database::models::ApiKeyDb {
+        let api_key = sdrtrunk_storage::models::ApiKeyDb {
             id: "test-user".to_string(),
             key_hash: "hash123".to_string(),
             description: Some("Test User".to_string()),
@@ -471,7 +508,7 @@ mod tests {
         let headers = HeaderMap::new();
         let mut parts = create_test_parts_with_headers(headers);
         
-        let api_key = sdrtrunk_database::models::ApiKeyDb {
+        let api_key = sdrtrunk_storage::models::ApiKeyDb {
             id: "test-user".to_string(),
             key_hash: "hash123".to_string(),
             description: Some("Test User".to_string()),

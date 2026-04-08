@@ -1,0 +1,40 @@
+[package]
+name = "sdrtrunk-types"
+version.workspace = true
+authors.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+description = "Pure validated types for SDRTrunk transcriber (no I/O dependencies)"
+publish = false
+repository = "https://github.com/swiftraccoon/rs-sdrtrunk-transcriber"
+keywords = ["sdr", "radio", "types", "validation"]
+categories = ["data-structures"]
+readme = "../../README.md"
+
+[features]
+sqlx = ["dep:sqlx"]
+
+[dependencies]
+# Serialization (no async!)
+serde = { workspace = true }
+# Date/time
+chrono = { workspace = true }
+
+# UUIDs
+uuid = { workspace = true }
+
+# Error handling
+thiserror = { workspace = true }
+
+# Optional database support
+sqlx = { workspace = true, optional = true }
+
+# JSON (needed by AppError::Serialization)
+serde_json = { workspace = true }
+
+[dev-dependencies]
+proptest = { workspace = true }
+
+[lints]
+workspace = true

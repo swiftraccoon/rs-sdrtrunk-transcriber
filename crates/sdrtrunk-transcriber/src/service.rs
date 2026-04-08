@@ -52,7 +52,7 @@ pub trait TranscriptionService: Send + Sync {
     fn capabilities(&self) -> ServiceCapabilities;
 
     /// Get service name
-    fn name(&self) -> &str;
+    fn name(&self) -> &'static str;
 }
 
 /// Service health status
@@ -85,6 +85,7 @@ pub struct ServiceHealth {
 
 impl ServiceHealth {
     /// Create a healthy status
+    #[must_use]
     pub fn healthy(status: impl Into<String>) -> Self {
         Self {
             healthy: true,
@@ -99,6 +100,7 @@ impl ServiceHealth {
     }
 
     /// Create an unhealthy status
+    #[must_use]
     pub fn unhealthy(status: impl Into<String>) -> Self {
         Self {
             healthy: false,
@@ -140,6 +142,7 @@ pub struct AudioValidation {
 
 impl AudioValidation {
     /// Create a valid result
+    #[must_use]
     pub const fn valid(format: String, duration: f64, file_size: u64) -> Self {
         Self {
             valid: true,
@@ -153,6 +156,7 @@ impl AudioValidation {
     }
 
     /// Create an invalid result
+    #[must_use]
     pub fn invalid(reason: impl Into<String>, file_size: u64) -> Self {
         Self {
             valid: false,
@@ -175,6 +179,10 @@ impl AudioValidation {
 }
 
 /// Service capabilities description
+///
+/// The boolean fields represent independent capability flags for the transcription
+/// service, not a state machine, so `struct_excessive_bools` is suppressed.
+#[allow(clippy::struct_excessive_bools)]
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct ServiceCapabilities {
     /// Supports speaker diarization
@@ -227,6 +235,7 @@ impl Default for ServiceCapabilities {
 
 impl ServiceCapabilities {
     /// Create `WhisperX` capabilities
+    #[must_use]
     pub fn whisperx() -> Self {
         Self {
             diarization: true,
@@ -260,6 +269,7 @@ impl ServiceCapabilities {
     }
 
     /// Check if a format is supported
+    #[must_use]
     pub fn supports_format(&self, format: &str) -> bool {
         self.supported_formats
             .iter()
@@ -267,6 +277,7 @@ impl ServiceCapabilities {
     }
 
     /// Check if a language is supported
+    #[must_use]
     pub fn supports_language(&self, language: &str) -> bool {
         self.supported_languages
             .iter()
@@ -275,6 +286,11 @@ impl ServiceCapabilities {
 }
 
 #[cfg(test)]
+#[allow(
+    clippy::unwrap_used,
+    clippy::missing_panics_doc,
+    clippy::indexing_slicing
+)]
 mod tests {
     use super::*;
 

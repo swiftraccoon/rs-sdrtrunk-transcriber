@@ -18,6 +18,8 @@ from pythonjsonlogger import jsonlogger
 
 from config import config
 from models import (
+    AudioValidationRequest,
+    AudioValidationResponse,
     ServiceHealth,
     ServiceStats,
     TranscriptionRequest,
@@ -247,6 +249,88 @@ async def get_stats():
         1 for s in active_requests.values() if s == TranscriptionStatus.PROCESSING
     )
     return service_stats
+
+
+@app.post("/validate", response_model=AudioValidationResponse)
+async def validate_audio(request: AudioValidationRequest):
+    """Validate an audio file for transcription compatibility."""
+    import soundfile as sf
+
+    audio_path = request.audio_path
+
+    # Check if file exists
+    if not audio_path.exists():
+        return AudioValidationResponse(
+            valid=False,
+            file_size_bytes=0,
+            error_message=f"File not found: {audio_path}"
+        )
+
+    # Get file size
+    try:
+        file_size = audio_path.stat().st_size
+    except Exception as e:
+        return AudioValidationResponse(
+            valid=False,
+            file_size_bytes=0,
+            error_message=f"Cannot read file: {str(e)}"
+        )
+
+    # Try to read audio file metadata
+    try:
+        info = sf.info(str(audio_path))
+
+        # Extract metadata
+        duration = info.duration
+        sample_rate = info.samplerate
+        channels = info.channels
+        format_name = info.format
+
+        # Validate constraints
+        validation_errors = []
+
+        # Check if duration is reasonable (not empty, not too long)
+        if duration <= 0:
+            validation_errors.append("Audio file is empty")
+        elif duration > 3600:  # 1 hour max
+            validation_errors.append(f"Audio too long: {duration:.1f}s (max 3600s)")
+
+        # Check sample rate (should be at least 8kHz, preferably 16kHz+)
+        if sample_rate < 8000:
+            validation_errors.append(f"Sample rate too low: {sample_rate}Hz (min 8000Hz)")
+
+        # Check channels (mono or stereo)
+        if channels > 2:
+            validation_errors.append(f"Too many channels: {channels} (max 2)")
+
+        if validation_errors:
+            return AudioValidationResponse(
+                valid=False,
+                format=format_name,
+                duration_seconds=duration,
+                sample_rate=sample_rate,
+                channels=channels,
+                file_size_bytes=file_size,
+                error_message="; ".join(validation_errors)
+            )
+
+        # All checks passed
+        return AudioValidationResponse(
+            valid=True,
+            format=format_name,
+            duration_seconds=duration,
+            sample_rate=sample_rate,
+            channels=channels,
+            file_size_bytes=file_size
+        )
+
+    except Exception as e:
+        # Could not read audio file
+        return AudioValidationResponse(
+            valid=False,
+            file_size_bytes=file_size,
+            error_message=f"Invalid audio file: {str(e)}"
+        )
 
 
 @app.post("/transcribe", status_code=202)

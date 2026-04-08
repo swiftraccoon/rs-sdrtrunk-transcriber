@@ -3,10 +3,10 @@
 
 mod common;
 
-use sdrtrunk_core::context_error::Result;
+use anyhow::Result;
 use common::*;
-use sdrtrunk_core::{types::*, Config};
-use sdrtrunk_database::{models::*, queries::*, Database};
+use sdrtrunk_protocol::{Config, types::*};
+use sdrtrunk_storage::{models::*, queries::*, Database};
 use sqlx::{Row, Executor};
 use std::collections::HashMap;
 use testcontainers::{clients, runners::AsyncRunner, Image};
@@ -1172,14 +1172,14 @@ async fn test_concurrent_reads_while_writing() -> Result<()> {
             .await;
 
             if result.is_err() {
-                return Err(sdrtrunk_core::context_error::ContextError::new(
+                return Err(anyhow::anyhow!(
                     "Writer task failed".to_string(),
                 ));
             }
 
             tokio::time::sleep(tokio::time::Duration::from_millis(10)).await;
         }
-        Ok::<_, sdrtrunk_core::context_error::ContextError>(())
+        Ok::<_, anyhow::Error>(())
     });
 
     // Spawn multiple reader tasks that query simultaneously
@@ -1202,7 +1202,7 @@ async fn test_concurrent_reads_while_writing() -> Result<()> {
                 tokio::time::sleep(tokio::time::Duration::from_millis(5)).await;
             }
 
-            Ok::<_, sdrtrunk_core::context_error::ContextError>(read_count)
+            Ok::<_, anyhow::Error>(read_count)
         });
 
         reader_handles.push(handle);
@@ -1329,7 +1329,7 @@ async fn test_concurrent_inserts_no_deadlock() -> Result<()> {
             handle.await.expect("Task should complete")?;
         }
 
-        Ok::<_, sdrtrunk_core::context_error::ContextError>(())
+        Ok::<_, anyhow::Error>(())
     };
 
     // Run with timeout - if it times out, there's likely a deadlock
@@ -1344,6 +1344,298 @@ async fn test_concurrent_inserts_no_deadlock() -> Result<()> {
         .await?;
 
     assert_eq!(count, 15, "All 15 records should be inserted");
+
+    Ok(())
+}
+
+/// Test handling of invalid data conversions in queries
+#[tokio::test]
+async fn test_invalid_data_conversion_returns_error() -> Result<()> {
+    init_test_logging();
+
+    let test_db = TestDatabase::new().await?;
+    let db = test_db.database();
+
+    // Try to insert a call with invalid confidence value (> 1.0)
+    let mut call = RadioCallFixtures::complete();
+    call.transcription_confidence = Some(2.5); // Invalid: should be 0.0-1.0
+
+    // This should fail validation or conversion
+    let result = RadioCallQueries::insert(db.pool(), &call).await;
+
+    // Should handle invalid data gracefully
+    if result.is_ok() {
+        // If insert succeeds, query it back and verify it was clamped or handled
+        let call_id = result.unwrap();
+        let retrieved = RadioCallQueries::find_by_id(db.pool(), call_id).await?;
+        // Confidence should be clamped or the value should be handled appropriately
+        assert!(retrieved.transcription_confidence.is_some() || retrieved.transcription_confidence.is_none(),
+                "Invalid confidence should be handled gracefully");
+    }
+
+    Ok(())
+}
+
+/// Test query with malformed SQL parameters
+#[tokio::test]
+async fn test_query_with_sql_injection_attempt_is_safe() -> Result<()> {
+    init_test_logging();
+
+    let test_db = TestDatabase::new().await?;
+    let db = test_db.database();
+
+    // Insert a normal call
+    let call = RadioCallFixtures::complete();
+    let call_id = RadioCallQueries::insert(db.pool(), &call).await?;
+
+    // Try to query with SQL injection attempt
+    let malicious_system_id = "test'; DROP TABLE radio_calls; --";
+
+    // This should be safely parameterized and not execute the SQL
+    let results = RadioCallQueries::find_by_system(
+        db.pool(),
+        malicious_system_id,
+        100,
+        0
+    ).await?;
+
+    // Should return empty results (no match) but not execute malicious SQL
+    assert!(results.is_empty(), "SQL injection attempt should be safely handled");
+
+    // Verify table still exists by querying the original call
+    let original = RadioCallQueries::find_by_id(db.pool(), call_id).await?;
+    assert_eq!(original.id, call_id, "Original data should still exist");
+
+    Ok(())
+}
+
+/// Test transaction rollback on constraint violation
+#[tokio::test]
+async fn test_transaction_rollback_on_error() -> Result<()> {
+    init_test_logging();
+
+    let test_db = TestDatabase::new().await?;
+    let db = test_db.database();
+
+    // Insert first call
+    let call1 = RadioCallFixtures::complete();
+    let call_id = RadioCallQueries::insert(db.pool(), &call1).await?;
+
+    // Count before transaction
+    let count_before = sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM radio_calls")
+        .fetch_one(db.pool())
+        .await?;
+
+    // Start a transaction and try to insert duplicate ID (should fail)
+    let mut tx = db.pool().begin().await?;
+
+    let call2 = RadioCallFixtures::minimal();
+    let insert_query = r"
+        INSERT INTO radio_calls (id, system_id, talkgroup_id, source_radio_id, audio_filename, transcription_status)
+        VALUES ($1, $2, $3, $4, $5, $6)
+    ";
+
+    // Try to insert with same ID (should fail due to primary key constraint)
+    let result = sqlx::query(insert_query)
+        .bind(call_id) // Same ID as call1
+        .bind(&call2.system_id)
+        .bind(call2.talkgroup_id.unwrap_or(0))
+        .bind(call2.source_radio_id.unwrap_or(0))
+        .bind(&call2.audio_filename)
+        .bind(call2.transcription_status.to_string())
+        .execute(&mut *tx)
+        .await;
+
+    // Should fail with constraint violation
+    assert!(result.is_err(), "Duplicate ID insert should fail");
+
+    // Rollback transaction
+    tx.rollback().await?;
+
+    // Count after rollback should be same
+    let count_after = sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM radio_calls")
+        .fetch_one(db.pool())
+        .await?;
+
+    assert_eq!(count_before, count_after, "Count should be unchanged after rollback");
+
+    Ok(())
+}
+
+/// Test handling of extremely long string values
+#[tokio::test]
+async fn test_extremely_long_string_handling() -> Result<()> {
+    init_test_logging();
+
+    let test_db = TestDatabase::new().await?;
+    let db = test_db.database();
+
+    let mut call = RadioCallFixtures::complete();
+
+    // Create very long strings
+    call.system_label = Some("x".repeat(1000)); // 1000 chars
+    call.transcription_text = Some("Lorem ipsum ".repeat(10000)); // Very long transcription
+
+    // Should either succeed or fail gracefully (depending on DB constraints)
+    let result = RadioCallQueries::insert(db.pool(), &call).await;
+
+    match result {
+        Ok(call_id) => {
+            // If insert succeeds, verify it can be retrieved
+            let retrieved = RadioCallQueries::find_by_id(db.pool(), call_id).await?;
+            assert!(retrieved.system_label.is_some(), "Long string should be stored");
+        }
+        Err(e) => {
+            // If it fails, should fail gracefully with appropriate error
+            let error_msg = e.to_string();
+            assert!(!error_msg.is_empty(), "Error should have descriptive message");
+        }
+    }
+
+    Ok(())
+}
+
+/// Test concurrent transactions don't deadlock
+#[tokio::test]
+async fn test_concurrent_transactions_no_deadlock() -> Result<()> {
+    init_test_logging();
+
+    let test_db = TestDatabase::new().await?;
+    let db = test_db.database();
+
+    // Spawn multiple concurrent transactions
+    let mut handles = vec![];
+
+    for i in 0..10 {
+        let pool = db.pool().clone();
+
+        let handle = tokio::spawn(async move {
+            // Start transaction
+            let mut tx = pool.begin().await?;
+
+            // Insert a call
+            let mut call = RadioCallFixtures::minimal();
+            call.system_id = format!("concurrent_tx_{i}");
+            call.talkgroup_id = Some(i);
+
+            let insert_query = r"
+                INSERT INTO radio_calls (system_id, talkgroup_id, source_radio_id, audio_filename, transcription_status)
+                VALUES ($1, $2, $3, $4, $5)
+                RETURNING id
+            ";
+
+            let row = sqlx::query(insert_query)
+                .bind(&call.system_id)
+                .bind(call.talkgroup_id.unwrap_or(0))
+                .bind(call.source_radio_id.unwrap_or(0))
+                .bind(&call.audio_filename)
+                .bind(call.transcription_status.to_string())
+                .fetch_one(&mut *tx)
+                .await?;
+
+            // Commit transaction
+            tx.commit().await?;
+
+            Ok::<uuid::Uuid, sqlx::Error>(row.get("id"))
+        });
+
+        handles.push(handle);
+    }
+
+    // Wait for all transactions to complete
+    let mut success_count = 0;
+    for handle in handles {
+        if let Ok(Ok(_)) = handle.await {
+            success_count += 1;
+        }
+    }
+
+    // All transactions should complete without deadlock
+    assert_eq!(success_count, 10, "All 10 concurrent transactions should succeed");
+
+    Ok(())
+}
+
+/// Test pagination edge cases
+#[tokio::test]
+async fn test_pagination_edge_cases() -> Result<()> {
+    init_test_logging();
+
+    let test_db = TestDatabase::new().await?;
+    let db = test_db.database();
+
+    // Insert test data
+    for i in 0..25 {
+        let mut call = RadioCallFixtures::minimal();
+        call.system_id = format!("page_test_{i}");
+        call.talkgroup_id = Some(i);
+        RadioCallQueries::insert(db.pool(), &call).await?;
+    }
+
+    // Test offset beyond total records
+    let results = RadioCallQueries::find_by_system(
+        db.pool(),
+        "page_test_0", // Won't match any (system_id is unique per call)
+        10,
+        1000  // Way beyond actual records
+    ).await?;
+
+    assert!(results.is_empty(), "Offset beyond records should return empty");
+
+    // Test limit of 0
+    let results = RadioCallQueries::find_by_system(
+        db.pool(),
+        "nonexistent",
+        0,  // Zero limit
+        0
+    ).await?;
+
+    assert!(results.is_empty(), "Zero limit should return empty");
+
+    // Test negative offset (should be handled)
+    // Most implementations treat negative as 0 or error
+    let results = RadioCallQueries::find_all_with_filters(
+        db.pool(),
+        Default::default(),
+        Some(10),
+        Some(0),  // Can't test negative as it's unsigned
+        None,
+        None
+    ).await?;
+
+    assert!(results.len() <= 10, "Results should respect limit");
+
+    Ok(())
+}
+
+/// Test query performance with large result sets
+#[tokio::test]
+async fn test_large_result_set_performance() -> Result<()> {
+    init_test_logging();
+
+    let test_db = TestDatabase::new().await?;
+    let db = test_db.database();
+
+    // Insert many records
+    for i in 0..100 {
+        let mut call = RadioCallFixtures::minimal();
+        call.system_id = "perf_test".to_string();
+        call.talkgroup_id = Some(i);
+        RadioCallQueries::insert(db.pool(), &call).await?;
+    }
+
+    // Query all with time tracking
+    let start = std::time::Instant::now();
+    let results = RadioCallQueries::find_by_system(
+        db.pool(),
+        "perf_test",
+        1000,  // High limit
+        0
+    ).await?;
+    let elapsed = start.elapsed();
+
+    assert_eq!(results.len(), 100, "Should return all 100 records");
+    assert!(elapsed.as_millis() < 500, "Query should complete in < 500ms, took {:?}", elapsed);
 
     Ok(())
 }

@@ -5,25 +5,121 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>SDRTrunk Transcriber - Statistics</title>
     <style>
-        body { font-family: Arial, sans-serif; margin: 0; padding: 20px; background: #f5f5f5; }
-        .header { background: #2c3e50; color: white; padding: 1rem; margin: -20px -20px 20px; }
-        .nav { display: flex; gap: 1rem; margin-top: 1rem; }
-        .nav a { color: white; text-decoration: none; padding: 0.5rem 1rem; border-radius: 4px; }
-        .nav a:hover { background: #34495e; }
-        .nav a.active { background: #34495e; }
+        @import url('https://fonts.googleapis.com/css2?family=Cinzel:wght@400;600;700&family=Inter:wght@300;400;500;600;700&display=swap');
+
+        :root {
+            --bg-color: #08060e;
+            --card-bg: rgba(15,10,30,0.6);
+            --card-bg-solid: #0f0a1e;
+            --text-color: #d4cfe6;
+            --text-muted: #8b8aa0;
+            --text-dim: #6b6889;
+            --header-bg: rgba(8,6,14,0.85);
+            --header-text: #d4cfe6;
+            --accent-color: #7c3aed;
+            --accent-soft: rgba(139,92,246,0.08);
+            --gold-color: #c9a227;
+            --blue-light: #60a5fa;
+            --success-color: #10b981;
+            --shadow: 0 4px 20px rgba(0,0,0,0.3);
+            --border-color: rgba(139,92,246,0.12);
+            --border-subtle: rgba(139,92,246,0.08);
+            --input-bg: rgba(255,255,255,0.04);
+            --input-border: rgba(139,92,246,0.15);
+            --metric-bg: rgba(255,255,255,0.03);
+            --glow-purple: rgba(88,28,135,0.15);
+            --glow-blue: rgba(37,99,235,0.06);
+        }
+
+        [data-theme="light"] {
+            --bg-color: #f0ecff;
+            --card-bg: rgba(255,255,255,0.85);
+            --card-bg-solid: #ffffff;
+            --text-color: #1e1b4b;
+            --text-muted: #5b587a;
+            --text-dim: #8b8aa0;
+            --header-bg: rgba(15,10,30,0.95);
+            --header-text: #d4cfe6;
+            --accent-color: #7c3aed;
+            --accent-soft: rgba(124,58,237,0.08);
+            --gold-color: #a07d1c;
+            --blue-light: #3b82f6;
+            --success-color: #059669;
+            --shadow: 0 2px 12px rgba(124,58,237,0.08);
+            --border-color: rgba(124,58,237,0.12);
+            --border-subtle: rgba(124,58,237,0.06);
+            --input-bg: rgba(124,58,237,0.04);
+            --input-border: rgba(124,58,237,0.2);
+            --metric-bg: rgba(124,58,237,0.04);
+            --glow-purple: transparent;
+            --glow-blue: transparent;
+        }
+
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        body {
+            font-family: 'Inter', sans-serif;
+            padding: 0;
+            background: var(--bg-color);
+            color: var(--text-color);
+            min-height: 100vh;
+            overflow-x: hidden;
+        }
+        body::before {
+            content: '';
+            position: fixed; top: -200px; left: 50%; transform: translateX(-50%);
+            width: 900px; height: 600px;
+            background: radial-gradient(ellipse, var(--glow-purple) 0%, rgba(30,27,75,0.08) 40%, transparent 70%);
+            pointer-events: none; z-index: 0;
+        }
+
+        .page-content { position: relative; z-index: 1; max-width: 1400px; margin: 0 auto; padding: 28px 32px; }
+
+        .header {
+            position: sticky; top: 0; z-index: 100;
+            background: var(--header-bg);
+            backdrop-filter: blur(20px) saturate(1.5);
+            -webkit-backdrop-filter: blur(20px) saturate(1.5);
+            border-bottom: 1px solid var(--border-color);
+            color: var(--header-text);
+            padding: 0 32px;
+            display: flex; align-items: center; height: 56px; gap: 32px;
+        }
+        .header h1 {
+            font-family: 'Cinzel', serif; font-size: 15px; font-weight: 700; letter-spacing: 2px;
+            background: linear-gradient(135deg, #c9a227 0%, #f6d365 40%, #c9a227 80%);
+            -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;
+            text-transform: uppercase; white-space: nowrap;
+        }
+        .nav { display: flex; gap: 4px; }
+        .nav a { color: var(--text-muted); text-decoration: none; font-size: 13px; font-weight: 500; padding: 8px 14px; border-radius: 6px; transition: all 0.2s; }
+        .nav a:hover { color: var(--text-color); background: var(--accent-soft); }
+        .nav a.active { color: var(--gold-color); background: rgba(201,162,39,0.08); }
+        .theme-toggle { margin-left: auto; background: transparent; color: var(--text-muted); border: 1px solid var(--border-color); padding: 6px 14px; border-radius: 6px; cursor: pointer; font-size: 13px; font-weight: 500; transition: all 0.2s; }
+        .theme-toggle:hover { color: var(--text-color); border-color: var(--accent-color); }
+
+        h2 { font-family: 'Cinzel', serif; font-size: 20px; font-weight: 600; color: var(--text-color); margin: 20px 0 16px; letter-spacing: 0.5px; }
+
         .stats-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 1rem; }
-        .card { background: white; padding: 1.5rem; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
-        .card h3 { margin-top: 0; color: #2c3e50; }
-        .metric { display: flex; justify-content: space-between; margin: 0.5rem 0; padding: 0.5rem; background: #ecf0f1; border-radius: 4px; }
-        .metric-value { font-weight: bold; color: #2c3e50; }
-        .chart-placeholder { height: 200px; background: #ecf0f1; border-radius: 4px; display: flex; align-items: center; justify-content: center; color: #7f8c8d; margin: 1rem 0; }
+        .card { background: var(--card-bg); padding: 1.5rem; border-radius: 12px; border: 1px solid var(--border-subtle); backdrop-filter: blur(10px); }
+        .card h3 { margin-top: 0; font-family: 'Cinzel', serif; font-size: 13px; font-weight: 600; letter-spacing: 1.5px; text-transform: uppercase; color: var(--text-muted); }
+        .metric { display: flex; justify-content: space-between; margin: 0.5rem 0; padding: 10px 12px; background: var(--metric-bg); border: 1px solid var(--border-subtle); border-radius: 8px; font-size: 13px; color: var(--text-muted); }
+        .metric-value { font-weight: 600; background: linear-gradient(135deg, #a78bfa, #60a5fa); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text; }
+        .chart-placeholder { height: 200px; background: var(--metric-bg); border: 1px solid var(--border-subtle); border-radius: 10px; display: flex; align-items: center; justify-content: center; color: var(--text-dim); margin: 1rem 0; font-size: 13px; }
         .top-list { list-style: none; padding: 0; }
-        .top-list li { display: flex; justify-content: space-between; padding: 0.5rem; margin: 0.25rem 0; background: #ecf0f1; border-radius: 4px; }
-        .filters { background: white; padding: 1rem; border-radius: 8px; margin-bottom: 1rem; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
-        .filter-row { display: flex; gap: 1rem; align-items: center; flex-wrap: wrap; }
-        .filter-row select { padding: 0.5rem; border: 1px solid #ddd; border-radius: 4px; }
-        .btn { background: #3498db; color: white; border: none; padding: 0.5rem 1rem; border-radius: 4px; cursor: pointer; }
-        .btn:hover { background: #2980b9; }
+        .top-list li { display: flex; justify-content: space-between; padding: 10px 12px; margin: 4px 0; background: var(--metric-bg); border: 1px solid var(--border-subtle); border-radius: 8px; font-size: 13px; color: var(--text-color); }
+        .filters { background: var(--card-bg); padding: 1rem; border-radius: 10px; margin-bottom: 1rem; border: 1px solid var(--border-subtle); backdrop-filter: blur(10px); }
+        .filter-row { display: flex; gap: 0.75rem; align-items: center; flex-wrap: wrap; }
+        .filter-row label { font-size: 13px; font-weight: 500; color: var(--text-muted); }
+        .filter-row select { padding: 7px 14px; border: 1px solid var(--input-border); border-radius: 8px; background: var(--input-bg); color: var(--text-color); font-family: 'Inter', sans-serif; font-size: 13px; outline: none; transition: all 0.2s; }
+        .filter-row select:focus { border-color: rgba(139,92,246,0.4); box-shadow: 0 0 20px rgba(139,92,246,0.08); }
+        .btn {
+            background: linear-gradient(135deg, rgba(124,58,237,0.15), rgba(37,99,235,0.15));
+            color: var(--text-color); border: 1px solid var(--border-color);
+            padding: 7px 16px; border-radius: 8px; cursor: pointer;
+            font-size: 12px; font-weight: 500; font-family: 'Inter', sans-serif; transition: all 0.2s;
+        }
+        .btn:hover { border-color: var(--accent-color); background: linear-gradient(135deg, rgba(124,58,237,0.25), rgba(37,99,235,0.25)); }
     </style>
 </head>
 <body>
@@ -35,8 +131,10 @@
             <a href="/stats" class="active">Statistics</a>
             <a href="/admin">Admin</a>
         </nav>
+        <button class="theme-toggle" onclick="toggleTheme()">Light Mode</button>
     </div>
 
+    <div class="page-content">
     <h2>System Statistics</h2>
 
     <div class="filters">
@@ -136,8 +234,30 @@
             </div>
         </div>
     </div>
+    </div><!-- end page-content -->
 
     <script>
+        function toggleTheme() {
+            const body = document.body;
+            const button = document.querySelector('.theme-toggle');
+            if (body.getAttribute('data-theme') === 'light') {
+                body.removeAttribute('data-theme');
+                button.textContent = 'Light Mode';
+                localStorage.setItem('theme', 'dark');
+            } else {
+                body.setAttribute('data-theme', 'light');
+                button.textContent = 'Dark Mode';
+                localStorage.setItem('theme', 'light');
+            }
+        }
+        (function() {
+            if (localStorage.getItem('theme') === 'light') {
+                document.body.setAttribute('data-theme', 'light');
+                var btn = document.querySelector('.theme-toggle');
+                if (btn) btn.textContent = 'Dark Mode';
+            }
+        })();
+
         async function updateStats() {
             const period = document.getElementById('time-period').value;
             const system = document.getElementById('system-filter').value;

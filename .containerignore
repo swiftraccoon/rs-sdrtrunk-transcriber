@@ -1,0 +1,11 @@
+target/
+.git/
+docs/
+tests/
+benches/
+*.md
+.github/
+k8s/
+python/
+logs/
+data/

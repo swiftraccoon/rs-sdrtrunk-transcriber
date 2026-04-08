@@ -6,6 +6,7 @@ edition.workspace = true
 license.workspace = true
 rust-version.workspace = true
 description = "REST API server for SDRTrunk transcriber"
+publish = false
 repository = "https://github.com/swiftraccoon/rs-sdrtrunk-transcriber"
 readme = "../../README.md"
 keywords = ["sdr", "api", "rest", "axum", "transcription"]
@@ -17,9 +18,9 @@ path = "src/main.rs"
 
 [dependencies]
 # Internal dependencies
-sdrtrunk-core = { path = "../sdrtrunk-core" }
-sdrtrunk-database = { path = "../sdrtrunk-database" }
-sdrtrunk-transcriber = { path = "../sdrtrunk-transcriber" }
+sdrtrunk-protocol = { path = "../sdrtrunk-protocol" }
+sdrtrunk-types = { path = "../sdrtrunk-types" }
+sdrtrunk-storage = { path = "../sdrtrunk-storage" }
 
 # Web framework
 axum = { workspace = true }
@@ -48,11 +49,17 @@ chrono = { workspace = true }
 
 # Utilities
 uuid = { workspace = true }
+sha2 = { workspace = true }
 
 # Logging
 tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
 
-# Error handling (uses sdrtrunk-core custom implementations)
+# Error handling
+anyhow = { workspace = true }
+
+# Configuration loading
+config = { workspace = true }
 
 # Rate limiting
 governor = { workspace = true }
@@ -64,6 +71,9 @@ http = { workspace = true }
 
 # Dashboard/map for in-memory storage
 dashmap = { workspace = true }
+
+# Async utilities for WebSocket
+futures-util = { workspace = true }
 
 # Direct access to sqlx types
 sqlx = { workspace = true }
@@ -81,3 +91,6 @@ testcontainers = { workspace = true }
 testcontainers-modules = { workspace = true }
 validator = { workspace = true }
 tokio-test = "0.4"
+
+[lints]
+workspace = true

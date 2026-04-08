@@ -1,11 +1,9 @@
 //! Common test utilities and fixtures for integration tests
 
-use sdrtrunk_core::{context_error::Result, context_error};
-use sdrtrunk_core::{
-    types::{ApiKey, FileData, RadioCall, TranscriptionStatus},
-    Config,
-};
-use sdrtrunk_database::{models::RadioCallDb, Database};
+use anyhow::Result;
+use sdrtrunk_protocol::Config;
+use sdrtrunk_protocol::types::{ApiKey, FileData, RadioCall, TranscriptionStatus};
+use sdrtrunk_storage::{models::RadioCallDb, Database};
 use std::path::PathBuf;
 use tempfile::TempDir;
 use testcontainers::{clients, runners::AsyncRunner, ContainerAsync, Image};
@@ -184,7 +182,7 @@ where
         tokio::time::sleep(tokio::time::Duration::from_millis(10)).await;
     }
 
-    Err(context_error!("Condition not met within timeout"))
+    Err(anyhow::anyhow!("Condition not met within timeout"))
 }
 
 /// Create a minimal MP3 file for testing

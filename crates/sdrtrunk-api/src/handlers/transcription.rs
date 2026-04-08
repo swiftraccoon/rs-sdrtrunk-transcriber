@@ -7,35 +7,55 @@ use tracing::{error, info, warn};
 use uuid::Uuid;
 
 use crate::state::AppState;
-use sdrtrunk_database::queries::{RadioCallQueries, TranscriptionUpdate};
+use sdrtrunk_storage::queries::{RadioCallQueries, TranscriptionUpdate};
 use std::sync::Arc;
 
-/// Webhook callback payload from WhisperX service
+/// Webhook callback payload from `WhisperX` service
 #[derive(Debug, Deserialize)]
 pub struct TranscriptionCallback {
+    /// Unique identifier for the transcription request
     pub request_id: Uuid,
+    /// Identifier of the radio call being transcribed
     pub call_id: Uuid,
+    /// Transcription status (completed, failed, etc.)
     pub status: String,
+    /// Transcribed text output
     pub text: Option<String>,
+    /// Detected language code
     pub language: Option<String>,
+    /// Confidence score for the transcription
     pub confidence: Option<f32>,
+    /// Time taken to process in milliseconds
     pub processing_time_ms: u64,
+    /// Raw transcription segments
     pub segments: Option<Vec<serde_json::Value>>,
+    /// Speaker-attributed segments
     pub speaker_segments: Option<Vec<serde_json::Value>>,
+    /// Number of unique speakers detected
     pub speaker_count: Option<usize>,
+    /// Word-level alignment data
     pub words: Option<Vec<serde_json::Value>>,
+    /// Error message if transcription failed
     pub error: Option<String>,
+    /// ISO 8601 timestamp when transcription completed
     pub completed_at: String,
 }
 
 /// Response to webhook callback
 #[derive(Debug, Serialize)]
 pub struct CallbackResponse {
+    /// Status of the callback processing
     pub status: String,
+    /// Human-readable status message
     pub message: String,
 }
 
-/// Handle transcription completion webhook from WhisperX
+/// Handle transcription completion webhook from `WhisperX`
+#[allow(
+    clippy::cognitive_complexity,
+    clippy::cast_possible_truncation,
+    clippy::cast_possible_wrap
+)]
 pub async fn transcription_callback(
     State(state): State<Arc<AppState>>,
     Json(payload): Json<TranscriptionCallback>,
@@ -80,7 +100,7 @@ pub async fn transcription_callback(
     .await;
 
     match update_result {
-        Ok(_) => {
+        Ok(()) => {
             info!(
                 "Successfully updated transcription for call {} in database",
                 payload.call_id
@@ -121,7 +141,7 @@ pub async fn transcription_callback(
                 StatusCode::INTERNAL_SERVER_ERROR,
                 Json(CallbackResponse {
                     status: "error".to_string(),
-                    message: format!("Failed to update database: {}", e),
+                    message: format!("Failed to update database: {e}"),
                 }),
             )
         }
@@ -129,6 +149,7 @@ pub async fn transcription_callback(
 }
 
 /// Health check endpoint for transcription service
+#[allow(clippy::unused_async)]
 pub async fn transcription_health() -> impl IntoResponse {
     Json(json!({
         "status": "healthy",

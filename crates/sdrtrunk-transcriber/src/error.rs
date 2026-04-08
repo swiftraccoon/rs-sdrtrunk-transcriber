@@ -154,6 +154,7 @@ impl TranscriptionError {
     }
 
     /// Create a processing timeout error
+    #[must_use]
     pub const fn timeout(seconds: u64) -> Self {
         Self::ProcessingTimeout { seconds }
     }
@@ -185,6 +186,7 @@ impl TranscriptionError {
     }
 
     /// Create a queue full error
+    #[must_use]
     pub const fn queue_full(max_size: usize) -> Self {
         Self::QueueFull { max_size }
     }
@@ -218,6 +220,7 @@ impl TranscriptionError {
     }
 
     /// Check if error is retryable
+    #[must_use]
     pub const fn is_retryable(&self) -> bool {
         matches!(
             self,
@@ -230,6 +233,7 @@ impl TranscriptionError {
     }
 
     /// Get error severity level for logging
+    #[must_use]
     pub const fn severity(&self) -> ErrorSeverity {
         match self {
             Self::FileNotFound { .. } | Self::InvalidAudioFormat { .. } => ErrorSeverity::Warning,
@@ -256,20 +260,15 @@ pub enum ErrorSeverity {
     Critical,
 }
 
-// Conversions to core error types
-impl From<TranscriptionError> for sdrtrunk_core::context_error::ContextError {
-    fn from(err: TranscriptionError) -> Self {
-        Self::with_context(err, "Transcription service error")
-    }
-}
-
-impl From<TranscriptionError> for sdrtrunk_core::Error {
+/// Conversion to application-level error type.
+impl From<TranscriptionError> for sdrtrunk_types::AppError {
     fn from(err: TranscriptionError) -> Self {
         Self::Transcription(err.to_string())
     }
 }
 
 #[cfg(test)]
+#[allow(clippy::unwrap_used, clippy::missing_panics_doc)]
 mod tests {
     use super::*;
 

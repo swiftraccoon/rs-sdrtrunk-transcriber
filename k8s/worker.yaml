@@ -1,0 +1,76 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: sdrtrunk-worker
+  labels:
+    app: sdrtrunk-worker
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: sdrtrunk-worker
+  template:
+    metadata:
+      labels:
+        app: sdrtrunk-worker
+    spec:
+      containers:
+        - name: worker
+          image: registry:5000/sdrtrunk-worker:latest  # Update to your registry
+          imagePullPolicy: Always
+          env:
+            - name: RUST_LOG
+              value: "info"
+            - name: WHISPER_MODEL_PATH
+              value: "/models/ggml-large-v3.bin"
+            # Config uses __ as nested separator
+            - name: SDRTRUNK__SERVER__HOST
+              value: "0.0.0.0"
+            - name: SDRTRUNK__SERVER__PORT
+              value: "8080"
+            - name: SDRTRUNK__DATABASE__URL
+              value: "postgresql://user:password@db-host:5432/sdrtrunk"  # Update to your DB
+            - name: SDRTRUNK__STORAGE__BASE_DIR
+              value: "/data"
+            - name: SDRTRUNK__STORAGE__UPLOAD_DIR
+              value: "uploads"
+            - name: SDRTRUNK__STORAGE__MAX_FILE_SIZE
+              value: "104857600"
+            - name: SDRTRUNK__API__ENABLE_AUTH
+              value: "false"
+            - name: SDRTRUNK__SECURITY__REQUIRE_API_KEY
+              value: "false"
+            - name: SDRTRUNK__LOGGING__LEVEL
+              value: "info"
+            - name: SDRTRUNK__LOGGING__FORMAT
+              value: "json"
+            - name: SDRTRUNK__TRANSCRIPTION__ENABLED
+              value: "true"
+            - name: SDRTRUNK__TRANSCRIPTION__SERVICE
+              value: "whisper"
+            - name: SDRTRUNK__TRANSCRIPTION__TIMEOUT_SECONDS
+              value: "300"
+            - name: SDRTRUNK__TRANSCRIPTION__WORKERS
+              value: "1"
+            - name: SDRTRUNK__TRANSCRIPTION__QUEUE_SIZE
+              value: "100"
+          volumeMounts:
+            - name: whisper-model
+              mountPath: /models
+              readOnly: true
+            - name: audio-storage
+              mountPath: /data
+          resources:
+            requests:
+              memory: "4Gi"
+              cpu: "2000m"
+            limits:
+              memory: "8Gi"
+              cpu: "8000m"
+      volumes:
+        - name: whisper-model
+          persistentVolumeClaim:
+            claimName: whisper-model
+        - name: audio-storage
+          persistentVolumeClaim:
+            claimName: sdrtrunk-audio

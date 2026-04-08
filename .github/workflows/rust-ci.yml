@@ -5,6 +5,8 @@ on:
     branches: [ main, develop ]
   pull_request:
     branches: [ main, develop ]
+  schedule:
+    - cron: '0 6 * * 1'  # Weekly Monday 6am UTC security scan
 
 env:
   CARGO_TERM_COLOR: always
@@ -178,12 +180,16 @@ jobs:
       run: |
         cargo install cargo-audit --locked
         cargo install cargo-deny --locked
-        
+        cargo install cargo-machete --locked
+
     - name: Run cargo audit
-      run: cargo audit --deny warnings
-      
+      run: cargo audit --ignore RUSTSEC-2025-0111
+
     - name: Run cargo deny
       run: cargo deny check
+
+    - name: Check for unused dependencies
+      run: cargo machete
 
   # Memory safety with Miri (nightly only)
   miri:

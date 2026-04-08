@@ -1,8 +1,10 @@
 //! Pagination component for navigating through data
+#![allow(unreachable_pub)]
 
 use leptos::prelude::*;
 
 /// Pagination component
+#[allow(unreachable_pub, dead_code)]
 #[component]
 pub fn Pagination(
     /// Current page (1-based)
@@ -22,7 +24,7 @@ pub fn Pagination(
                 disabled={!has_prev}
                 on:click=move |_| {
                     if has_prev {
-                        on_page_change(current_page - 1);
+                        on_page_change.run(current_page - 1);
                     }
                 }
             >
@@ -38,7 +40,7 @@ pub fn Pagination(
                 disabled={!has_next}
                 on:click=move |_| {
                     if has_next {
-                        on_page_change(current_page + 1);
+                        on_page_change.run(current_page + 1);
                     }
                 }
             >

@@ -2,9 +2,10 @@
 
 #![forbid(unsafe_code)]
 
+use anyhow::{Result, anyhow};
 use sdrtrunk_api::build_router;
-use sdrtrunk_core::{Config, context_error, context_error::Result, init_logging};
-use sdrtrunk_database::Database;
+use sdrtrunk_protocol::Config;
+use sdrtrunk_storage::Database;
 use std::net::SocketAddr;
 use tokio::net::TcpListener;
 use tower::ServiceBuilder;
@@ -17,20 +18,51 @@ use tracing::{error, info};
 ///
 /// Returns error if logging initialization fails
 pub fn load_environment() -> Result<()> {
-    // Initialize logging first
-    init_logging()?;
+    use tracing_subscriber::{fmt, layer::SubscriberExt, util::SubscriberInitExt};
+    tracing_subscriber::registry()
+        .with(
+            tracing_subscriber::EnvFilter::try_from_default_env().unwrap_or_else(|_| "info".into()),
+        )
+        .with(
+            fmt::layer()
+                .with_target(false)
+                .with_thread_ids(false)
+                .with_thread_names(false)
+                .with_file(false)
+                .with_line_number(false)
+                .with_level(true)
+                .compact(),
+        )
+        .init();
     Ok(())
 }
 
+/// Load configuration from environment variables and config files.
+///
+/// # Errors
+///
+/// Returns an error if configuration cannot be loaded or parsed.
+fn load_config() -> Result<Config> {
+    let cfg = config::Config::builder()
+        .add_source(config::File::with_name("config").required(false))
+        .add_source(config::Environment::with_prefix("SDRTRUNK").separator("_"))
+        .build()
+        .map_err(|e| anyhow!("Configuration load error: {e}"))?;
+    cfg.try_deserialize()
+        .map_err(|e| anyhow!("Configuration deserialization error: {e}"))
+}
+
 /// Load and validate configuration
+#[must_use]
 pub fn load_and_validate_config() -> Config {
-    Config::load().unwrap_or_else(|err| {
+    load_config().unwrap_or_else(|err| {
         info!("Failed to load config ({}), using defaults", err);
         Config::default()
     })
 }
 
 /// Print startup banner
+#[allow(clippy::cognitive_complexity)]
 pub fn print_startup_banner(config: &Config) {
     info!("╔══════════════════════════════════════════════════════════╗");
     info!(
@@ -49,29 +81,30 @@ pub fn print_startup_banner(config: &Config) {
 /// # Errors
 ///
 /// Returns error if database connection, migration, or health check fails
+#[allow(clippy::cognitive_complexity)]
 pub async fn initialize_database(config: &Config) -> Result<Database> {
     // Initialize database connection
     info!("Connecting to database...");
     let database = Database::new(config).await.map_err(|e| {
         error!("Failed to connect to database: {}", e);
-        context_error!("Database connection failed: {}", e)
+        anyhow!("Database connection failed: {e}")
     })?;
 
     info!("Database connection established");
 
-    // Run database migrations
-    info!("Running database migrations...");
-    database.migrate().await.map_err(|e| {
-        error!("Database migration failed: {}", e);
-        context_error!("Migration failed: {}", e)
+    // Initialize schema (creates tables if they don't exist)
+    info!("Initializing database schema...");
+    database.init_schema().await.map_err(|e| {
+        error!("Schema initialization failed: {}", e);
+        anyhow!("Schema init failed: {e}")
     })?;
 
-    info!("Database migrations completed");
+    info!("Database schema ready");
 
     // Perform database health check
     database.health_check().await.map_err(|e| {
         error!("Database health check failed: {}", e);
-        context_error!("Database health check failed: {}", e)
+        anyhow!("Database health check failed: {e}")
     })?;
 
     info!("Database health check passed");
@@ -86,10 +119,11 @@ pub async fn initialize_database(config: &Config) -> Result<Database> {
 pub fn create_server_address(config: &Config) -> Result<SocketAddr> {
     format!("{}:{}", config.server.host, config.server.port)
         .parse()
-        .map_err(|e| context_error!("Invalid server address: {}", e))
+        .map_err(|e| anyhow!("Invalid server address: {e}"))
 }
 
 /// Print server ready banner
+#[allow(clippy::cognitive_complexity)]
 pub fn print_ready_banner(addr: SocketAddr) {
     info!("╔══════════════════════════════════════════════════════════╗");
     info!("║                     SERVER READY                         ║");
@@ -101,6 +135,11 @@ pub fn print_ready_banner(addr: SocketAddr) {
 }
 
 #[tokio::main]
+#[allow(
+    clippy::cognitive_complexity,
+    clippy::missing_errors_doc,
+    clippy::missing_panics_doc
+)]
 async fn main() -> Result<()> {
     load_environment()?;
     let config = load_and_validate_config();
@@ -118,7 +157,7 @@ async fn main() -> Result<()> {
     // Create TCP listener
     let listener = TcpListener::bind(&addr)
         .await
-        .map_err(|e| context_error!("Failed to bind to {}: {}", addr, e))?;
+        .map_err(|e| anyhow!("Failed to bind to {addr}: {e}"))?;
 
     print_ready_banner(addr);
 
@@ -129,13 +168,18 @@ async fn main() -> Result<()> {
     )
     .with_graceful_shutdown(shutdown_signal())
     .await
-    .map_err(|e| context_error!("Server error: {}", e))?;
+    .map_err(|e| anyhow!("Server error: {e}"))?;
 
     info!("Server shutdown complete");
     Ok(())
 }
 
 /// Handle graceful shutdown signals
+///
+/// # Panics
+///
+/// Panics if signal handlers cannot be installed.
+#[allow(clippy::expect_used)]
 pub async fn shutdown_signal() {
     let ctrl_c = async {
         tokio::signal::ctrl_c()
@@ -145,7 +189,7 @@ pub async fn shutdown_signal() {
 
     #[cfg(unix)]
     let terminate = async {
-        tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate())
+        let _ = tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate())
             .expect("Failed to install signal handler")
             .recv()
             .await;
@@ -165,6 +209,44 @@ pub async fn shutdown_signal() {
 }
 
 #[cfg(test)]
+#[allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::panic,
+    clippy::indexing_slicing,
+    clippy::cognitive_complexity,
+    clippy::too_many_lines,
+    clippy::unreadable_literal,
+    clippy::redundant_clone,
+    clippy::missing_panics_doc,
+    clippy::missing_errors_doc,
+    clippy::needless_pass_by_value,
+    clippy::uninlined_format_args,
+    unused_qualifications,
+    clippy::cast_possible_truncation,
+    clippy::cast_precision_loss,
+    clippy::cast_sign_loss,
+    clippy::cast_possible_wrap,
+    clippy::items_after_statements,
+    clippy::float_cmp,
+    clippy::redundant_closure_for_method_calls,
+    clippy::fn_params_excessive_bools,
+    clippy::similar_names,
+    clippy::map_unwrap_or,
+    clippy::unused_async,
+    clippy::case_sensitive_file_extension_comparisons,
+    clippy::manual_string_new,
+    clippy::no_effect_underscore_binding,
+    clippy::option_if_let_else,
+    clippy::single_char_pattern,
+    clippy::ip_constant,
+    clippy::or_fun_call,
+    clippy::cast_lossless,
+    clippy::needless_collect,
+    clippy::single_match_else,
+    clippy::needless_raw_string_hashes,
+    clippy::match_same_arms
+)]
 mod tests {
     use super::*;
     use std::net::{IpAddr, Ipv4Addr};

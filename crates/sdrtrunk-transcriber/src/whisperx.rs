@@ -32,6 +32,8 @@ struct PythonRequest {
     callback_url: Option<String>,
 }
 
+/// Options forwarded to the Python transcription service
+#[allow(clippy::struct_excessive_bools)]
 #[derive(Debug, Serialize)]
 struct PythonOptions {
     language: Option<String>,
@@ -91,10 +93,34 @@ struct PythonWord {
     speaker: Option<String>,
 }
 
+/// Python audio validation request
+#[derive(Debug, Serialize)]
+struct PythonValidationRequest {
+    audio_path: String,
+}
+
+/// Python audio validation response
+#[derive(Debug, Deserialize)]
+struct PythonValidationResponse {
+    valid: bool,
+    format: Option<String>,
+    duration_seconds: Option<f64>,
+    sample_rate: Option<i32>,
+    channels: Option<i32>,
+    file_size_bytes: u64,
+    error_message: Option<String>,
+}
+
+/// Type alias for the async request tracking map
+type ActiveRequestMap = Arc<RwLock<HashMap<Uuid, TranscriptionStatus>>>;
+
 /// `WhisperX` transcription service
 ///
 /// This service integrates with the Python `WhisperX` service for
 /// high-quality transcription with speaker diarization.
+///
+/// `Debug` is manually implemented because [`tokio::process::Child`] does not
+/// implement `Debug` in a useful way.
 pub struct WhisperXService {
     /// Configuration
     config: TranscriptionConfig,
@@ -112,36 +138,63 @@ pub struct WhisperXService {
     initialized: Arc<RwLock<bool>>,
 
     /// Request tracking
-    active_requests: Arc<RwLock<HashMap<Uuid, TranscriptionStatus>>>,
+    active_requests: ActiveRequestMap,
+}
+
+impl std::fmt::Debug for WhisperXService {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("WhisperXService")
+            .field("config", &self.config)
+            .field("service_url", &self.service_url)
+            .field("initialized", &self.initialized)
+            .finish_non_exhaustive()
+    }
 }
 
 impl WhisperXService {
     /// Create a new `WhisperX` service
-    pub fn new(config: TranscriptionConfig) -> Self {
-        let service_port = config
-            .service_port
-            .expect("service_port must be configured in transcription config");
-        let service_url = format!("http://localhost:{}", service_port);
+    ///
+    /// # Errors
+    ///
+    /// Returns `TranscriptionError::ConfigurationError` if `service_port` is not set
+    /// in the config, or if the HTTP client fails to build.
+    pub fn new(config: TranscriptionConfig) -> TranscriptionResult<Self> {
+        let service_port = config.service_port.ok_or_else(|| {
+            TranscriptionError::configuration(
+                "service_port must be configured in transcription config",
+            )
+        })?;
+        let service_url = config
+            .whisperx_url
+            .clone()
+            .unwrap_or_else(|| format!("http://localhost:{service_port}"));
 
         let client = reqwest::Client::builder()
-            .timeout(Duration::from_secs(30)) // Total request timeout
-            .connect_timeout(Duration::from_secs(5)) // Connection timeout
-            .pool_idle_timeout(Duration::from_secs(90)) // Keep connections alive for 90 seconds
-            .pool_max_idle_per_host(10) // Keep up to 10 idle connections
+            .timeout(Duration::from_secs(30))
+            .connect_timeout(Duration::from_secs(5))
+            .pool_idle_timeout(Duration::from_secs(90))
+            .pool_max_idle_per_host(10)
             .build()
-            .unwrap();
+            .map_err(|e| {
+                TranscriptionError::configuration(format!("Failed to build HTTP client: {e}"))
+            })?;
 
-        Self {
+        Ok(Self {
             config,
             service_url,
             client,
             python_process: Arc::new(RwLock::new(None)),
             initialized: Arc::new(RwLock::new(false)),
             active_requests: Arc::new(RwLock::new(HashMap::new())),
-        }
+        })
     }
 
     /// Start the Python service subprocess
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the service port is not configured, if spawning the
+    /// Python process fails, or if the service does not become healthy in time.
     async fn start_python_service(&self) -> TranscriptionResult<()> {
         let python_path = self
             .config
@@ -149,10 +202,12 @@ impl WhisperXService {
             .clone()
             .unwrap_or_else(|| std::path::PathBuf::from("python/whisperx_service"));
 
-        info!("Starting Python WhisperX service at {:?}", python_path);
+        info!("Starting Python WhisperX service at {python_path:?}");
 
-        // Python service will read its configuration from config.toml directly
-        // We only need to pass the port if not already configured there
+        let service_port = self
+            .config
+            .service_port
+            .ok_or_else(|| TranscriptionError::configuration("service_port must be configured"))?;
 
         // Start Python process with multiple workers for better concurrency
         // Note: Workers share the same model in memory, so this is memory-efficient
@@ -163,23 +218,19 @@ impl WhisperXService {
             .arg("--host")
             .arg("0.0.0.0")
             .arg("--port")
-            .arg(
-                self.config
-                    .service_port
-                    .expect("service_port must be configured")
-                    .to_string(),
-            )
+            .arg(service_port.to_string())
             .current_dir(&python_path)
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
             .spawn()
             .map_err(|e| {
-                TranscriptionError::subprocess(format!("Failed to start Python service: {}", e))
+                TranscriptionError::subprocess(format!("Failed to start Python service: {e}"))
             })?;
 
         // Store process handle
         let mut process = self.python_process.write().await;
         *process = Some(child);
+        drop(process);
 
         // Wait for service to be ready
         self.wait_for_service().await?;
@@ -188,43 +239,39 @@ impl WhisperXService {
     }
 
     /// Wait for the Python service to be ready
+    ///
+    /// # Errors
+    ///
+    /// Returns `ServiceUnavailable` if the service does not respond with a success
+    /// status within the maximum number of polling attempts.
     async fn wait_for_service(&self) -> TranscriptionResult<()> {
         let mut attempts = 0;
         let max_attempts = 30;
 
         while attempts < max_attempts {
-            match self
+            if self
                 .client
-                .get(&format!("{}/health", self.service_url))
+                .get(format!("{}/health", self.service_url))
                 .send()
                 .await
+                .is_ok_and(|response| response.status().is_success())
             {
-                Ok(response) => {
-                    if response.status().is_success() {
-                        info!("Python WhisperX service is ready");
-                        return Ok(());
-                    }
-                }
-                Err(_) => {
-                    // Service not ready yet
-                }
+                info!("Python WhisperX service is ready");
+                return Ok(());
             }
 
             attempts += 1;
             sleep(Duration::from_secs(2)).await;
         }
 
-        Err(TranscriptionError::service_unavailable(
-            "Python service failed to start",
-        ))
+        Err(TranscriptionError::service_unavailable(format!(
+            "WhisperX service not reachable at {} after {max_attempts} attempts",
+            self.service_url
+        )))
     }
 
     /// Convert Python response to Rust response
-    fn convert_response(
-        &self,
-        py_response: PythonResponse,
-        request_id: Uuid,
-    ) -> TranscriptionResponse {
+    fn convert_response(py_response: PythonResponse, request_id: Uuid) -> TranscriptionResponse {
         let segments: Vec<TranscriptionSegment> = py_response
             .segments
             .into_iter()

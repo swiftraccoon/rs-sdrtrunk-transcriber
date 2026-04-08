@@ -2,7 +2,7 @@
 
 use crate::{routes::build_routes, state::AppState};
 use axum::Router;
-use sdrtrunk_core::Config;
+use sdrtrunk_protocol::Config;
 use std::sync::Arc;
 
 /// Build the complete web application with all routes and state

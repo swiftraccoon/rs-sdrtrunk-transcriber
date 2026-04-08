@@ -5,6 +5,7 @@ use axum::{
     Router,
     routing::{delete, get, post},
 };
+use http::StatusCode;
 use std::sync::Arc;
 use tower_http::compression::CompressionLayer;
 
@@ -35,11 +36,15 @@ pub fn api_routes() -> Router<Arc<AppState>> {
             get(handlers::stats::get_system_stats),
         )
         .route("/api/stats/global", get(handlers::stats::get_global_stats))
+        // Queue statistics endpoint
+        .route("/api/queue/stats", get(handlers::stats::queue_stats))
         // Transcription webhook endpoint
         .route(
             "/api/v1/transcription/callback",
             post(handlers::transcription::transcription_callback),
         )
+        // WebSocket endpoint for real-time updates
+        .route("/api/ws", get(handlers::websocket::websocket_handler))
         // Apply basic middleware
         .layer(CompressionLayer::new())
 }
@@ -61,8 +66,8 @@ pub fn docs_routes() -> Router<Arc<AppState>> {
         // API documentation endpoints
         .route("/api/docs", get(serve_api_docs))
         .route("/api/docs/openapi.json", get(serve_openapi_spec))
-        // Metrics endpoint (could be secured separately)
-        .route("/metrics", get(serve_metrics))
+        // Prometheus metrics endpoint
+        .route("/metrics", get(handlers::metrics::serve_metrics))
 }
 
 /// Build admin routes with strict authentication
@@ -70,10 +75,16 @@ pub fn admin_routes() -> Router<Arc<AppState>> {
     Router::new()
         .route("/admin/stats", get(admin_stats))
         .route("/admin/cleanup", post(admin_cleanup))
-        .route("/admin/api-keys", get(list_api_keys))
-        .route("/admin/api-keys", post(create_api_key))
-        .route("/admin/api-keys/:key_id", get(get_api_key))
-        .route("/admin/api-keys/:key_id", delete(delete_api_key))
+        .route("/admin/api-keys", get(handlers::admin::list_api_keys))
+        .route("/admin/api-keys", post(handlers::admin::create_api_key))
+        .route(
+            "/admin/api-keys/:key_id",
+            get(handlers::admin::get_api_key_details),
+        )
+        .route(
+            "/admin/api-keys/:key_id",
+            delete(handlers::admin::delete_api_key),
+        )
 }
 
 /// Serve API documentation
@@ -85,36 +96,7 @@ async fn serve_api_docs() -> &'static str {
 
 /// Serve `OpenAPI` specification
 async fn serve_openapi_spec() -> axum::Json<serde_json::Value> {
-    // In a real implementation, this would generate or serve the OpenAPI spec
-    axum::Json(serde_json::json!({
-        "openapi": "3.0.0",
-        "info": {
-            "title": "SDRTrunk Transcriber API",
-            "version": "0.1.0",
-            "description": "REST API for SDRTrunk call transcription and management"
-        },
-        "paths": {
-            "/api/call-upload": {
-                "post": {
-                    "summary": "Upload a radio call recording",
-                    "description": "Upload audio files from SDRTrunk for processing and transcription"
-                }
-            },
-            "/api/calls": {
-                "get": {
-                    "summary": "List radio calls",
-                    "description": "Retrieve a paginated list of radio calls with filtering options"
-                }
-            }
-        }
-    }))
-}
-
-/// Serve Prometheus metrics
-async fn serve_metrics() -> &'static str {
-    // In a real implementation, this would serve Prometheus metrics
-    // For now, return a placeholder
-    "# HELP sdrtrunk_calls_total Total number of calls processed\n# TYPE sdrtrunk_calls_total counter\nsdrtrunk_calls_total 0\n"
+    axum::Json(crate::openapi::generate_openapi_spec())
 }
 
 /// Admin statistics endpoint
@@ -124,7 +106,7 @@ async fn serve_metrics() -> &'static str {
 /// Returns an error if the database query fails.
 async fn admin_stats(
     axum::extract::State(state): axum::extract::State<Arc<AppState>>,
-) -> Result<axum::Json<serde_json::Value>, axum::http::StatusCode> {
+) -> Result<axum::Json<serde_json::Value>, StatusCode> {
     // Implementation would gather comprehensive system statistics
     let admin_stats = serde_json::json!({
         "database": {
@@ -150,48 +132,12 @@ async fn admin_stats(
 /// Returns an error if the database operations fail.
 async fn admin_cleanup(
     axum::extract::State(_state): axum::extract::State<Arc<AppState>>,
-) -> Result<axum::Json<serde_json::Value>, axum::http::StatusCode> {
+) -> Result<axum::Json<serde_json::Value>, StatusCode> {
     // Implementation would perform database cleanup operations
     Ok(axum::Json(serde_json::json!({
         "message": "Cleanup operation completed",
         "cleaned_records": 0
     })))
-}
-
-/// List API keys (admin only)
-async fn list_api_keys() -> axum::Json<serde_json::Value> {
-    // Implementation would list API keys (without revealing actual keys)
-    axum::Json(serde_json::json!({
-        "api_keys": []
-    }))
-}
-
-/// Create API key (admin only)
-async fn create_api_key() -> axum::Json<serde_json::Value> {
-    // Implementation would create a new API key
-    axum::Json(serde_json::json!({
-        "message": "API key creation not yet implemented"
-    }))
-}
-
-/// Get API key details (admin only)
-async fn get_api_key(
-    axum::extract::Path(_key_id): axum::extract::Path<String>,
-) -> axum::Json<serde_json::Value> {
-    // Implementation would return API key details
-    axum::Json(serde_json::json!({
-        "message": "API key details not yet implemented"
-    }))
-}
-
-/// Delete API key (admin only)
-async fn delete_api_key(
-    axum::extract::Path(_key_id): axum::extract::Path<String>,
-) -> axum::Json<serde_json::Value> {
-    // Implementation would delete API key
-    axum::Json(serde_json::json!({
-        "message": "API key deletion not yet implemented"
-    }))
 }
 
 /// Combine all routes into a single router
@@ -206,9 +152,9 @@ pub fn build_router() -> Router<Arc<AppState>> {
 }
 
 /// Handle 404 Not Found errors
-async fn not_found_handler() -> (axum::http::StatusCode, axum::Json<serde_json::Value>) {
+async fn not_found_handler() -> (StatusCode, axum::Json<serde_json::Value>) {
     (
-        axum::http::StatusCode::NOT_FOUND,
+        StatusCode::NOT_FOUND,
         axum::Json(serde_json::json!({
             "error": "Not Found",
             "code": "ROUTE_NOT_FOUND",
@@ -251,7 +197,44 @@ async fn api_info() -> axum::Json<serde_json::Value> {
 }
 
 #[cfg(test)]
-#[allow(clippy::missing_panics_doc)]
+#[allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::panic,
+    clippy::indexing_slicing,
+    clippy::cognitive_complexity,
+    clippy::too_many_lines,
+    clippy::unreadable_literal,
+    clippy::redundant_clone,
+    clippy::missing_panics_doc,
+    clippy::missing_errors_doc,
+    clippy::needless_pass_by_value,
+    clippy::uninlined_format_args,
+    unused_qualifications,
+    clippy::cast_possible_truncation,
+    clippy::cast_precision_loss,
+    clippy::cast_sign_loss,
+    clippy::cast_possible_wrap,
+    clippy::items_after_statements,
+    clippy::float_cmp,
+    clippy::redundant_closure_for_method_calls,
+    clippy::fn_params_excessive_bools,
+    clippy::similar_names,
+    clippy::map_unwrap_or,
+    clippy::unused_async,
+    clippy::case_sensitive_file_extension_comparisons,
+    clippy::manual_string_new,
+    clippy::no_effect_underscore_binding,
+    clippy::option_if_let_else,
+    clippy::single_char_pattern,
+    clippy::ip_constant,
+    clippy::or_fun_call,
+    clippy::cast_lossless,
+    clippy::needless_collect,
+    clippy::single_match_else,
+    clippy::needless_raw_string_hashes,
+    clippy::match_same_arms
+)]
 mod tests {
     use super::*;
     use axum::http::StatusCode;
@@ -267,22 +250,12 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_serve_metrics() {
-        let metrics = serve_metrics().await;
-
-        // Should contain Prometheus format metrics
-        assert!(metrics.contains("# HELP sdrtrunk_calls_total"));
-        assert!(metrics.contains("# TYPE sdrtrunk_calls_total counter"));
-        assert!(metrics.contains("sdrtrunk_calls_total 0"));
-    }
-
-    #[tokio::test]
     async fn test_serve_openapi_spec() {
         let spec = serve_openapi_spec().await;
         let json_value = spec.0;
 
         // Verify OpenAPI spec structure
-        assert_eq!(json_value["openapi"], "3.0.0");
+        assert_eq!(json_value["openapi"], "3.0.3");
         assert_eq!(json_value["info"]["title"], "SDRTrunk Transcriber API");
         assert_eq!(json_value["info"]["version"], "0.1.0");
 
@@ -291,9 +264,13 @@ mod tests {
         let paths = json_value["paths"].as_object().unwrap();
         assert!(!paths.is_empty());
 
-        // Check specific paths that we know exist in the hardcoded JSON
+        // Check specific paths that we know exist in the comprehensive spec
         assert!(paths.contains_key("/api/call-upload"));
         assert!(paths.contains_key("/api/calls"));
+        assert!(paths.contains_key("/api/calls/{id}"));
+        assert!(paths.contains_key("/health"));
+        assert!(paths.contains_key("/metrics"));
+        assert!(paths.contains_key("/api/ws"));
     }
 
     #[tokio::test]
@@ -354,54 +331,6 @@ mod tests {
         );
     }
 
-    #[tokio::test]
-    async fn test_list_api_keys_response() {
-        let response = list_api_keys().await;
-        let json_value = response.0;
-
-        assert!(json_value["api_keys"].is_array());
-        assert_eq!(json_value["api_keys"].as_array().unwrap().len(), 0);
-    }
-
-    #[tokio::test]
-    async fn test_create_api_key_response() {
-        let response = create_api_key().await;
-        let json_value = response.0;
-
-        assert!(
-            json_value["message"]
-                .as_str()
-                .unwrap()
-                .contains("not yet implemented")
-        );
-    }
-
-    #[tokio::test]
-    async fn test_get_api_key_response() {
-        let response = get_api_key(axum::extract::Path("test_key".to_string())).await;
-        let json_value = response.0;
-
-        assert!(
-            json_value["message"]
-                .as_str()
-                .unwrap()
-                .contains("not yet implemented")
-        );
-    }
-
-    #[tokio::test]
-    async fn test_delete_api_key_response() {
-        let response = delete_api_key(axum::extract::Path("test_key".to_string())).await;
-        let json_value = response.0;
-
-        assert!(
-            json_value["message"]
-                .as_str()
-                .unwrap()
-                .contains("not yet implemented")
-        );
-    }
-
     // Test router construction (without running server)
     #[test]
     fn test_api_routes_construction() {
@@ -444,7 +373,7 @@ mod tests {
         let json_string = serde_json::to_string(&spec.0).expect("Should serialize to JSON");
 
         // Verify it's valid JSON and contains key fields
-        assert!(json_string.contains("\"openapi\":\"3.0.0\""));
+        assert!(json_string.contains("\"openapi\":\"3.0.3\""));
         assert!(json_string.contains("\"title\":\"SDRTrunk Transcriber API\""));
     }
 
@@ -477,21 +406,6 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_admin_placeholder_responses() {
-        // Test admin endpoints that return placeholder responses
-        let list_keys = list_api_keys().await;
-        let create_key = create_api_key().await;
-
-        // Should have expected structure
-        assert!(list_keys.0.get("api_keys").is_some());
-        assert!(create_key.0.get("message").is_some());
-
-        // Messages should indicate not implemented
-        let create_msg = create_key.0["message"].as_str().unwrap();
-        assert!(create_msg.contains("not yet implemented"));
-    }
-
-    #[tokio::test]
     async fn test_openapi_spec_paths() {
         let spec = serve_openapi_spec().await;
         let paths = &spec.0["paths"];
@@ -515,19 +429,6 @@ mod tests {
 
         // Should have status ok
         assert_eq!(json_value["status"], "ok");
-    }
-
-    #[tokio::test]
-    async fn test_metrics_prometheus_format() {
-        let metrics = serve_metrics().await;
-
-        // Should follow Prometheus metrics format
-        assert!(metrics.starts_with("# HELP"));
-        assert!(metrics.contains("# TYPE"));
-        assert!(metrics.contains("counter"));
-
-        // Should have specific metric
-        assert!(metrics.contains("sdrtrunk_calls_total"));
     }
 
     #[tokio::test]

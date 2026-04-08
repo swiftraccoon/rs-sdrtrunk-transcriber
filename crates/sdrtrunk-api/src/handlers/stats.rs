@@ -4,7 +4,7 @@ use crate::state::AppState;
 use axum::{
     extract::{Path, Query, State},
     http::StatusCode,
-    response::Json,
+    response::{IntoResponse, Json},
 };
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
@@ -31,8 +31,9 @@ pub struct StatsQuery {
 /// System statistics response
 #[derive(Debug, Serialize)]
 pub struct SystemStatsResponse {
-    /// System information
+    /// System identifier
     pub system_id: String,
+    /// Optional system display label
     pub system_label: Option<String>,
 
     /// Call counts
@@ -246,6 +247,11 @@ pub struct ErrorResponse {
 }
 
 /// Get system statistics
+///
+/// # Errors
+///
+/// Returns an error if the database queries fail or query parameters are invalid.
+#[allow(clippy::cognitive_complexity, clippy::cast_possible_truncation)]
 pub async fn get_system_stats(
     State(state): State<Arc<AppState>>,
     Path(system_id): Path<String>,
@@ -265,8 +271,15 @@ pub async fn get_system_stats(
 
     info!("Retrieving statistics for system: {}", system_id);
 
-    // Get basic system stats from database
-    let system_stats = match sdrtrunk_database::get_system_stats(&state.pool, &system_id).await {
+    // Execute all queries in parallel for better performance
+    let (system_stats_result, calls_24h_result, calls_7d_result) = tokio::join!(
+        sdrtrunk_storage::get_system_stats(&state.pool, &system_id),
+        sdrtrunk_storage::count_system_calls_since(&state.pool, &system_id, 24),
+        sdrtrunk_storage::count_system_calls_since(&state.pool, &system_id, 168) // 7 days
+    );
+
+    // Handle system stats result
+    let system_stats = match system_stats_result {
         Ok(system_stats) => system_stats,
         Err(e) => {
             error!("Failed to retrieve system stats: {}", e);
@@ -280,15 +293,10 @@ pub async fn get_system_stats(
         }
     };
 
-    // Calculate additional metrics
-    let (calls_last_24h, calls_last_7d, avg_calls_per_day) =
-        match calculate_additional_metrics(&state.pool, &system_id).await {
-            Ok(metrics) => metrics,
-            Err(e) => {
-                warn!("Failed to calculate additional metrics: {}", e);
-                (0, 0, 0.0) // Fallback values
-            }
-        };
+    // Handle metrics results with fallback values
+    let calls_last_24h: i32 = calls_24h_result.unwrap_or(0).try_into().unwrap_or(0);
+    let calls_last_7d: i32 = calls_7d_result.unwrap_or(0).try_into().unwrap_or(0);
+    let avg_calls_per_day = f64::from(calls_last_7d) / 7.0;
 
     // Determine activity status
     let activity_status =
@@ -301,7 +309,7 @@ pub async fn get_system_stats(
 
     // Build response
     let mut response = SystemStatsResponse {
-        system_id: system_stats.system_id.clone(),
+        system_id: system_stats.system_id.as_str().to_string(),
         system_label: system_stats.system_label.clone(),
         call_counts: CallCounts {
             total_calls: system_stats.total_calls.unwrap_or(0),
@@ -345,13 +353,26 @@ pub async fn get_system_stats(
 }
 
 /// Get global statistics across all systems
+///
+/// # Errors
+///
+/// Returns an error if the database queries fail.
+#[allow(clippy::cognitive_complexity, clippy::cast_possible_truncation)]
 pub async fn get_global_stats(
     State(state): State<Arc<AppState>>,
 ) -> Result<Json<GlobalStatsResponse>, (StatusCode, Json<ErrorResponse>)> {
     info!("Retrieving global statistics");
 
-    // Get total systems count
-    let total_systems = match sdrtrunk_database::count_systems(&state.pool).await {
+    // Execute all independent queries in parallel for better performance
+    let (systems_result, calls_result, recent_result, top_systems_result) = tokio::join!(
+        sdrtrunk_storage::count_systems(&state.pool),
+        sdrtrunk_storage::count_radio_calls(&state.pool),
+        sdrtrunk_storage::count_recent_calls(&state.pool, 24),
+        sdrtrunk_storage::get_top_systems(&state.pool, 10)
+    );
+
+    // Handle results
+    let total_systems = match systems_result {
         Ok(count) => count,
         Err(e) => {
             error!("Failed to count systems: {}", e);
@@ -365,8 +386,7 @@ pub async fn get_global_stats(
         }
     };
 
-    // Get total calls
-    let total_calls = match sdrtrunk_database::count_radio_calls(&state.pool).await {
+    let total_calls = match calls_result {
         Ok(count) => count,
         Err(e) => {
             error!("Failed to count calls: {}", e);
@@ -380,8 +400,7 @@ pub async fn get_global_stats(
         }
     };
 
-    // Get calls in last 24 hours
-    let calls_last_24h = match sdrtrunk_database::count_recent_calls(&state.pool, 24).await {
+    let calls_last_24h = match recent_result {
         Ok(count) => count,
         Err(e) => {
             warn!("Failed to count recent calls: {}", e);
@@ -389,8 +408,7 @@ pub async fn get_global_stats(
         }
     };
 
-    // Get top systems
-    let top_systems = match sdrtrunk_database::get_top_systems(&state.pool, 10).await {
+    let top_systems = match top_systems_result {
         Ok(systems) => systems
             .into_iter()
             .map(|(system_id, call_count)| SystemSummary {
@@ -423,35 +441,8 @@ pub async fn get_global_stats(
     Ok(Json(response))
 }
 
-/// Calculate additional metrics for a system
-async fn calculate_additional_metrics(
-    pool: &sqlx::PgPool,
-    system_id: &str,
-) -> Result<(i32, i32, f64), sdrtrunk_core::Error> {
-    // This would be implemented with proper SQL queries
-    // For now, returning placeholder values
-    let calls_last_24h = sdrtrunk_database::count_system_calls_since(pool, system_id, 24)
-        .await
-        .unwrap_or(0);
-
-    let calls_last_7d = sdrtrunk_database::count_system_calls_since(
-        pool, system_id, 168, // 7 days * 24 hours
-    )
-    .await
-    .unwrap_or(0);
-
-    #[allow(clippy::cast_precision_loss)]
-    let avg_calls_per_day = calls_last_7d as f64 / 7.0;
-
-    Ok((
-        calls_last_24h.try_into().unwrap_or(0),
-        calls_last_7d.try_into().unwrap_or(0),
-        avg_calls_per_day,
-    ))
-}
-
 /// Determine activity status based on call counts
-fn determine_activity_status(calls_this_hour: i32, calls_last_24h: i32) -> ActivityStatus {
+const fn determine_activity_status(calls_this_hour: i32, calls_last_24h: i32) -> ActivityStatus {
     if calls_this_hour > 0 {
         ActivityStatus::Active
     } else if calls_last_24h > 0 {
@@ -462,14 +453,14 @@ fn determine_activity_status(calls_this_hour: i32, calls_last_24h: i32) -> Activ
 }
 
 /// Get talkgroup statistics for a system
-fn get_talkgroup_stats(_pool: &sqlx::PgPool, _system_id: &str) -> Vec<TalkgroupStats> {
+const fn get_talkgroup_stats(_pool: &sqlx::PgPool, _system_id: &str) -> Vec<TalkgroupStats> {
     // This would query the database for talkgroup stats
     // Placeholder implementation
     Vec::new()
 }
 
 /// Get upload source statistics for a system
-fn get_upload_source_stats(_pool: &sqlx::PgPool, _system_id: &str) -> Vec<UploadSourceStats> {
+const fn get_upload_source_stats(_pool: &sqlx::PgPool, _system_id: &str) -> Vec<UploadSourceStats> {
     // This would query the database for upload source stats
     // Placeholder implementation
     Vec::new()
@@ -502,8 +493,63 @@ fn calculate_storage_stats(storage_path: &std::path::Path) -> StorageStats {
     }
 }
 
+/// Get transcription job queue statistics
+///
+/// Returns aggregate counts of pending, processing, completed, and failed jobs.
+///
+/// # Errors
+///
+/// Returns `500 Internal Server Error` if the database query fails.
+pub async fn queue_stats(State(app_state): State<Arc<AppState>>) -> impl IntoResponse {
+    match sdrtrunk_storage::jobs::JobQueue::stats(&app_state.pool).await {
+        Ok(stats) => (StatusCode::OK, Json(serde_json::json!(stats))).into_response(),
+        Err(e) => (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(serde_json::json!({"error": e.to_string()})),
+        )
+            .into_response(),
+    }
+}
+
 #[cfg(test)]
-#[allow(clippy::missing_panics_doc)]
+#[allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::panic,
+    clippy::indexing_slicing,
+    clippy::cognitive_complexity,
+    clippy::too_many_lines,
+    clippy::unreadable_literal,
+    clippy::redundant_clone,
+    clippy::missing_panics_doc,
+    clippy::missing_errors_doc,
+    clippy::needless_pass_by_value,
+    clippy::uninlined_format_args,
+    unused_qualifications,
+    clippy::cast_possible_truncation,
+    clippy::cast_precision_loss,
+    clippy::cast_sign_loss,
+    clippy::cast_possible_wrap,
+    clippy::items_after_statements,
+    clippy::float_cmp,
+    clippy::redundant_closure_for_method_calls,
+    clippy::fn_params_excessive_bools,
+    clippy::similar_names,
+    clippy::map_unwrap_or,
+    clippy::unused_async,
+    clippy::case_sensitive_file_extension_comparisons,
+    clippy::manual_string_new,
+    clippy::no_effect_underscore_binding,
+    clippy::option_if_let_else,
+    clippy::single_char_pattern,
+    clippy::ip_constant,
+    clippy::or_fun_call,
+    clippy::cast_lossless,
+    clippy::needless_collect,
+    clippy::single_match_else,
+    clippy::needless_raw_string_hashes,
+    clippy::match_same_arms
+)]
 mod tests {
     use super::*;
     use chrono::Utc;

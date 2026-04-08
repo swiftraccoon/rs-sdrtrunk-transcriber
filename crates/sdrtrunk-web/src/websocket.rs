@@ -1,12 +1,13 @@
 //! WebSocket client for real-time updates
 
 use futures_util::StreamExt;
-use sdrtrunk_core::{Error, Result};
+use sdrtrunk_types::{AppError as Error, AppResult as Result};
 use serde::{Deserialize, Serialize};
 use tokio_tungstenite::{connect_async, tungstenite::Message};
 use tracing::{error, info, warn};
 
 /// WebSocket client for receiving real-time updates
+#[derive(Debug)]
 pub struct WebSocketClient {
     url: String,
 }

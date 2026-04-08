@@ -1,4 +1,5 @@
 //! Page handlers for serving HTML templates
+#![allow(unreachable_pub)]
 
 use axum::response::Html;
 

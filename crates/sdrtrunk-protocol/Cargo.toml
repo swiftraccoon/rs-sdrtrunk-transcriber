@@ -1,0 +1,30 @@
+[package]
+name = "sdrtrunk-protocol"
+version.workspace = true
+authors.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+description = "Business logic and validation for SDRTrunk transcriber (no async/I/O)"
+publish = false
+repository = "https://github.com/swiftraccoon/rs-sdrtrunk-transcriber"
+keywords = ["sdr", "radio", "validation", "protocol"]
+categories = ["data-structures"]
+readme = "../../README.md"
+
+[dependencies]
+# Our types layer
+sdrtrunk-types = { path = "../sdrtrunk-types" }
+
+# Serialization
+serde = { workspace = true }
+serde_json = { workspace = true }
+
+# Error handling
+thiserror = { workspace = true }
+
+[dev-dependencies]
+proptest = { workspace = true }
+
+[lints]
+workspace = true

@@ -1,8 +1,8 @@
 //! Test helper functions and utilities
 
-use sdrtrunk_core::{context_error::Result, context_error};
+use anyhow::Result;
 use reqwest::multipart::{Form, Part};
-use sdrtrunk_core::Config;
+use sdrtrunk_protocol::Config;
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::Once;
@@ -245,7 +245,7 @@ pub async fn assert_error_response(
     response: reqwest::Response,
     expected_status: reqwest::StatusCode,
     expected_error_code: &str,
-) -> Result<sdrtrunk_core::types::ErrorResponse> {
+) -> Result<sdrtrunk_protocol::types::ErrorResponse> {
     let error_response = assert_json_response(response, expected_status).await?;
     assert_eq!(error_response.code, expected_error_code);
     assert!(!error_response.success);
@@ -628,7 +628,7 @@ mod tests {
     #[tokio::test]
     async fn test_assert_timeout_success() {
         let result = assert_timeout(
-            || async { Ok::<i32, sdrtrunk_core::context_error::ContextError>(42) },
+            || async { Ok::<i32, anyhow::Error>(42) },
             tokio::time::Duration::from_millis(100),
             "test",
         ).await.unwrap();
@@ -641,7 +641,7 @@ mod tests {
         let result = assert_timeout(
             || async {
                 tokio::time::sleep(tokio::time::Duration::from_millis(200)).await;
-                Ok::<i32, sdrtrunk_core::context_error::ContextError>(42)
+                Ok::<i32, anyhow::Error>(42)
             },
             tokio::time::Duration::from_millis(50),
             "test",
@@ -686,7 +686,7 @@ mod tests {
         let result = perf
             .assert(|| async {
                 tokio::time::sleep(tokio::time::Duration::from_millis(10)).await;
-                Ok::<i32, sdrtrunk_core::context_error::ContextError>(42)
+                Ok::<i32, anyhow::Error>(42)
             })
             .await
             .unwrap();
@@ -702,7 +702,7 @@ mod tests {
         let result = perf
             .assert(|| async {
                 tokio::time::sleep(tokio::time::Duration::from_millis(20)).await;
-                Ok::<i32, sdrtrunk_core::context_error::ContextError>(42)
+                Ok::<i32, anyhow::Error>(42)
             })
             .await
             .unwrap();
@@ -718,7 +718,7 @@ mod tests {
         let _result = perf
             .assert(|| async {
                 tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
-                Ok::<i32, sdrtrunk_core::context_error::ContextError>(42)
+                Ok::<i32, anyhow::Error>(42)
             })
             .await
             .unwrap();

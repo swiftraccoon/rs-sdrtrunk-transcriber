@@ -1,7 +1,7 @@
 //! HTTP client for communicating with the `SDRTrunk` API
 
 use reqwest::Client;
-use sdrtrunk_core::Result;
+use sdrtrunk_types::{AppError, AppResult as Result};
 
 // Import actual types from API handlers
 pub use sdrtrunk_api::handlers::calls::{
@@ -12,7 +12,7 @@ pub use sdrtrunk_api::handlers::stats::{
 };
 
 /// API client for making HTTP requests to the `SDRTrunk` API server
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct ApiClient {
     client: Client,
     base_url: String,
@@ -78,7 +78,10 @@ impl ApiClient {
             query_params.push(format!("include_transcription={include_transcription}"));
         }
         if let Some(ref transcription_status) = params.transcription_status {
-            query_params.push(format!("transcription_status={}", urlencoding::encode(transcription_status)));
+            query_params.push(format!(
+                "transcription_status={}",
+                urlencoding::encode(transcription_status)
+            ));
         }
 
         if !query_params.is_empty() {
@@ -95,10 +98,10 @@ impl ApiClient {
         let response = request
             .send()
             .await
-            .map_err(|e| sdrtrunk_core::Error::Other(format!("Failed to fetch calls: {e}")))?;
+            .map_err(|e| AppError::Other(format!("Failed to fetch calls: {e}")))?;
 
         if !response.status().is_success() {
-            return Err(sdrtrunk_core::Error::Other(format!(
+            return Err(AppError::Other(format!(
                 "API returned error: {}",
                 response.status()
             )));
@@ -107,7 +110,7 @@ impl ApiClient {
         let calls_response: serde_json::Value = response
             .json()
             .await
-            .map_err(|e| sdrtrunk_core::Error::Other(format!("Failed to parse response: {e}")))?;
+            .map_err(|e| AppError::Other(format!("Failed to parse response: {e}")))?;
 
         Ok(calls_response)
     }
@@ -126,20 +129,22 @@ impl ApiClient {
             request = request.header("X-API-Key", api_key);
         }
 
-        let response = request.send().await.map_err(|e| {
-            sdrtrunk_core::Error::Other(format!("Failed to fetch system stats: {e}"))
-        })?;
+        let response = request
+            .send()
+            .await
+            .map_err(|e| AppError::Other(format!("Failed to fetch system stats: {e}")))?;
 
         if !response.status().is_success() {
-            return Err(sdrtrunk_core::Error::Other(format!(
+            return Err(AppError::Other(format!(
                 "API returned error: {}",
                 response.status()
             )));
         }
 
-        let stats: serde_json::Value = response.json().await.map_err(|e| {
-            sdrtrunk_core::Error::Other(format!("Failed to parse system stats: {e}"))
-        })?;
+        let stats: serde_json::Value = response
+            .json()
+            .await
+            .map_err(|e| AppError::Other(format!("Failed to parse system stats: {e}")))?;
 
         Ok(stats)
     }
@@ -158,20 +163,22 @@ impl ApiClient {
             request = request.header("X-API-Key", api_key);
         }
 
-        let response = request.send().await.map_err(|e| {
-            sdrtrunk_core::Error::Other(format!("Failed to fetch call details: {e}"))
-        })?;
+        let response = request
+            .send()
+            .await
+            .map_err(|e| AppError::Other(format!("Failed to fetch call details: {e}")))?;
 
         if !response.status().is_success() {
-            return Err(sdrtrunk_core::Error::Other(format!(
+            return Err(AppError::Other(format!(
                 "Call not found: {}",
                 response.status()
             )));
         }
 
-        let call_data: serde_json::Value = response.json().await.map_err(|e| {
-            sdrtrunk_core::Error::Other(format!("Failed to parse call details: {e}"))
-        })?;
+        let call_data: serde_json::Value = response
+            .json()
+            .await
+            .map_err(|e| AppError::Other(format!("Failed to parse call details: {e}")))?;
 
         Ok(call_data)
     }
@@ -190,20 +197,22 @@ impl ApiClient {
             request = request.header("X-API-Key", api_key);
         }
 
-        let response = request.send().await.map_err(|e| {
-            sdrtrunk_core::Error::Other(format!("Failed to fetch global stats: {e}"))
-        })?;
+        let response = request
+            .send()
+            .await
+            .map_err(|e| AppError::Other(format!("Failed to fetch global stats: {e}")))?;
 
         if !response.status().is_success() {
-            return Err(sdrtrunk_core::Error::Other(format!(
+            return Err(AppError::Other(format!(
                 "API returned error: {}",
                 response.status()
             )));
         }
 
-        let stats: serde_json::Value = response.json().await.map_err(|e| {
-            sdrtrunk_core::Error::Other(format!("Failed to parse global stats: {e}"))
-        })?;
+        let stats: serde_json::Value = response
+            .json()
+            .await
+            .map_err(|e| AppError::Other(format!("Failed to parse global stats: {e}")))?;
 
         Ok(stats)
     }

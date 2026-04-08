@@ -6,6 +6,7 @@ use axum::{
     http::StatusCode,
     response::Json,
 };
+use sdrtrunk_types::{Frequency, RadioId, SystemId, TalkgroupId};
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use tracing::{error, info, warn};
@@ -23,7 +24,8 @@ pub struct ListCallsQuery {
     #[validate(range(min = 0))]
     pub offset: Option<i64>,
 
-    /// Filter by system ID
+    /// Filter by system ID (accepts both `system_id` and `system` query params)
+    #[serde(alias = "system")]
     #[validate(length(max = 50))]
     pub system_id: Option<String>,
 
@@ -93,12 +95,12 @@ pub struct CallSummary {
     pub call_timestamp: chrono::DateTime<chrono::Utc>,
 
     /// System information
-    pub system_id: String,
+    pub system_id: SystemId,
     /// System display name or label
     pub system_label: Option<String>,
 
     /// Talkgroup information
-    pub talkgroup_id: Option<i32>,
+    pub talkgroup_id: Option<TalkgroupId>,
     /// Talkgroup display name or label
     pub talkgroup_label: Option<String>,
     /// Talkgroup group classification
@@ -107,7 +109,7 @@ pub struct CallSummary {
     pub talkgroup_tag: Option<String>,
 
     /// Radio information
-    pub source_radio_id: Option<i32>,
+    pub source_radio_id: Option<RadioId>,
     /// Radio user's alias or call sign
     pub talker_alias: Option<String>,
 
@@ -128,7 +130,7 @@ pub struct CallSummary {
     pub transcription_text: Option<String>,
 
     /// Frequency
-    pub frequency: Option<i64>,
+    pub frequency: Option<Frequency>,
 }
 
 /// Detailed call information
@@ -143,12 +145,12 @@ pub struct CallDetail {
     pub call_timestamp: chrono::DateTime<chrono::Utc>,
 
     /// System information
-    pub system_id: String,
+    pub system_id: SystemId,
     /// System display name or label
     pub system_label: Option<String>,
 
     /// Talkgroup information
-    pub talkgroup_id: Option<i32>,
+    pub talkgroup_id: Option<TalkgroupId>,
     /// Talkgroup display name or label
     pub talkgroup_label: Option<String>,
     /// Talkgroup group classification
@@ -157,7 +159,7 @@ pub struct CallDetail {
     pub talkgroup_tag: Option<String>,
 
     /// Radio information
-    pub source_radio_id: Option<i32>,
+    pub source_radio_id: Option<RadioId>,
     /// Radio user's alias or call sign
     pub talker_alias: Option<String>,
 
@@ -165,27 +167,40 @@ pub struct CallDetail {
     pub audio_filename: Option<String>,
     /// Full path to the audio file
     pub audio_file_path: Option<String>,
+    /// Size of audio file in bytes
     pub audio_size_bytes: Option<i64>,
+    /// MIME type of the audio content
     pub audio_content_type: Option<String>,
+    /// Duration of the audio recording in seconds
     pub duration_seconds: Option<rust_decimal::Decimal>,
 
-    /// Transcription information
+    /// Transcription text output
     pub transcription_text: Option<String>,
+    /// Confidence score for the transcription (0.0-1.0)
     pub transcription_confidence: Option<rust_decimal::Decimal>,
+    /// Detected language of the transcription
     pub transcription_language: Option<String>,
+    /// Current transcription processing status
     pub transcription_status: Option<String>,
+    /// Speaker diarization segment data
     pub speaker_segments: Option<serde_json::Value>,
+    /// Number of unique speakers detected
     pub speaker_count: Option<i32>,
 
-    /// Technical details
-    pub frequency: Option<i64>,
+    /// Radio frequency used for the call
+    pub frequency: Option<Frequency>,
+    /// Patch group information
     pub patches: Option<String>,
+    /// Frequency list used during the call
     pub frequencies: Option<String>,
+    /// Source radio identifiers
     pub sources: Option<String>,
 
-    /// Upload information
+    /// When the call was uploaded
     pub upload_timestamp: chrono::DateTime<chrono::Utc>,
+    /// IP address of the uploader
     pub upload_ip: Option<sqlx::types::ipnetwork::IpNetwork>,
+    /// API key used for the upload
     pub upload_api_key_id: Option<String>,
 }
 
@@ -225,6 +240,11 @@ pub struct ErrorResponse {
 /// ```text
 /// GET /api/calls?system_id=police&limit=50&offset=0&include_transcription=true
 /// ```
+#[allow(
+    clippy::too_many_lines,
+    clippy::cognitive_complexity,
+    clippy::cast_possible_wrap
+)]
 pub async fn list_calls(
     State(state): State<Arc<AppState>>,
     Query(query): Query<ListCallsQuery>,
@@ -252,7 +272,7 @@ pub async fn list_calls(
     );
 
     // Build query with filters
-    let filter = sdrtrunk_database::RadioCallFilter {
+    let filter = sdrtrunk_storage::RadioCallFilter {
         system_id: query.system_id.as_deref(),
         talkgroup_id: query.talkgroup_id,
         transcription_status: query.transcription_status.as_deref(),
@@ -261,7 +281,7 @@ pub async fn list_calls(
         limit,
         offset,
     };
-    let calls = match sdrtrunk_database::list_radio_calls_filtered(&state.pool, filter).await {
+    let calls = match sdrtrunk_storage::list_radio_calls_filtered(&state.pool, filter).await {
         Ok(calls) => calls,
         Err(e) => {
             error!("Failed to list calls: {}", e);
@@ -277,7 +297,7 @@ pub async fn list_calls(
     };
 
     // Get total count for pagination
-    let filter = sdrtrunk_database::RadioCallFilter {
+    let filter = sdrtrunk_storage::RadioCallFilter {
         system_id: query.system_id.as_deref(),
         talkgroup_id: query.talkgroup_id,
         transcription_status: query.transcription_status.as_deref(),
@@ -286,7 +306,7 @@ pub async fn list_calls(
         limit: 0,  // Not used for count
         offset: 0, // Not used for count
     };
-    let total = match sdrtrunk_database::count_radio_calls_filtered(&state.pool, filter).await {
+    let total = match sdrtrunk_storage::count_radio_calls_filtered(&state.pool, filter).await {
         Ok(count) => count,
         Err(e) => {
             warn!("Failed to get total count: {}", e);
@@ -377,13 +397,14 @@ pub async fn list_calls(
 /// ```text
 /// GET /api/calls/550e8400-e29b-41d4-a716-446655440000
 /// ```
+#[allow(clippy::cognitive_complexity)]
 pub async fn get_call(
     State(state): State<Arc<AppState>>,
     Path(call_id): Path<Uuid>,
 ) -> Result<Json<CallDetail>, (StatusCode, Json<ErrorResponse>)> {
     info!("Retrieving call: {}", call_id);
 
-    let call = match sdrtrunk_database::get_radio_call(&state.pool, call_id).await {
+    let call = match sdrtrunk_storage::get_radio_call(&state.pool, call_id).await {
         Ok(Some(call)) => call,
         Ok(None) => {
             info!("Call not found: {}", call_id);
@@ -462,6 +483,11 @@ pub async fn get_call(
 /// # Errors
 ///
 /// Returns a validation error if the sort order is not "asc" or "desc".
+/// Validates that the transcription status is a known value.
+///
+/// # Errors
+///
+/// Returns a validation error if the status is not one of the accepted values.
 fn validate_transcription_status(status: &str) -> Result<(), validator::ValidationError> {
     match status {
         "pending" | "processing" | "completed" | "failed" => Ok(()),
@@ -471,6 +497,11 @@ fn validate_transcription_status(status: &str) -> Result<(), validator::Validati
     }
 }
 
+/// Validates that the sort order is a recognized value.
+///
+/// # Errors
+///
+/// Returns a validation error if the sort order is not "asc" or "desc".
 fn validate_sort_order(sort: &str) -> Result<(), validator::ValidationError> {
     match sort {
         "asc" | "desc" => Ok(()),
@@ -479,11 +510,49 @@ fn validate_sort_order(sort: &str) -> Result<(), validator::ValidationError> {
 }
 
 #[cfg(test)]
-#[allow(clippy::missing_panics_doc)]
+#[allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::panic,
+    clippy::indexing_slicing,
+    clippy::cognitive_complexity,
+    clippy::too_many_lines,
+    clippy::unreadable_literal,
+    clippy::redundant_clone,
+    clippy::missing_panics_doc,
+    clippy::missing_errors_doc,
+    clippy::needless_pass_by_value,
+    clippy::uninlined_format_args,
+    unused_qualifications,
+    clippy::cast_possible_truncation,
+    clippy::cast_precision_loss,
+    clippy::cast_sign_loss,
+    clippy::cast_possible_wrap,
+    clippy::items_after_statements,
+    clippy::float_cmp,
+    clippy::redundant_closure_for_method_calls,
+    clippy::fn_params_excessive_bools,
+    clippy::similar_names,
+    clippy::map_unwrap_or,
+    clippy::unused_async,
+    clippy::case_sensitive_file_extension_comparisons,
+    clippy::manual_string_new,
+    clippy::no_effect_underscore_binding,
+    clippy::option_if_let_else,
+    clippy::single_char_pattern,
+    clippy::ip_constant,
+    clippy::or_fun_call,
+    clippy::cast_lossless,
+    clippy::needless_collect,
+    clippy::single_match_else,
+    clippy::needless_raw_string_hashes,
+    clippy::match_same_arms
+)]
 mod tests {
     use super::*;
     use chrono::Utc;
     use rust_decimal::Decimal;
+    use sdrtrunk_types::{Frequency, RadioId, SystemId, TalkgroupId};
     use serde_json;
     use std::str::FromStr;
     use uuid::Uuid;
@@ -583,13 +652,13 @@ mod tests {
         let call_summary = CallSummary {
             id: call_id,
             call_timestamp: timestamp,
-            system_id: "police".to_string(),
+            system_id: SystemId::new("police").unwrap(),
             system_label: Some("Police Department".to_string()),
-            talkgroup_id: Some(12345),
+            talkgroup_id: Some(TalkgroupId::new(12345).unwrap()),
             talkgroup_label: Some("Dispatch".to_string()),
             talkgroup_group: Some("Operations".to_string()),
             talkgroup_tag: Some("Emergency".to_string()),
-            source_radio_id: Some(9876),
+            source_radio_id: Some(RadioId::new(9876).unwrap()),
             talker_alias: Some("Unit 123".to_string()),
             audio_filename: Some("call.mp3".to_string()),
             audio_size_bytes: Some(1024000),
@@ -597,7 +666,7 @@ mod tests {
             transcription_status: Some("completed".to_string()),
             transcription_confidence: Some(Decimal::from_str("0.95").unwrap()),
             transcription_text: Some("This is a test call".to_string()),
-            frequency: Some(154250000),
+            frequency: Some(Frequency::new(154250000).unwrap()),
         };
 
         let json = serde_json::to_string(&call_summary).expect("Failed to serialize");
@@ -616,9 +685,9 @@ mod tests {
         let call_summary = CallSummary {
             id: call_id,
             call_timestamp: timestamp,
-            system_id: "fire".to_string(),
+            system_id: SystemId::new("fire").unwrap(),
             system_label: None,
-            talkgroup_id: Some(67890),
+            talkgroup_id: Some(TalkgroupId::new(67890).unwrap()),
             talkgroup_label: None,
             talkgroup_group: None,
             talkgroup_tag: None,
@@ -630,7 +699,7 @@ mod tests {
             transcription_status: Some("pending".to_string()),
             transcription_confidence: None,
             transcription_text: None, // Should be omitted from JSON
-            frequency: Some(460125000),
+            frequency: Some(Frequency::new(460125000).unwrap()),
         };
 
         let json = serde_json::to_string(&call_summary).expect("Failed to serialize");
@@ -650,13 +719,13 @@ mod tests {
             id: call_id,
             created_at,
             call_timestamp,
-            system_id: "ems".to_string(),
+            system_id: SystemId::new("ems").unwrap(),
             system_label: Some("Emergency Medical Services".to_string()),
-            talkgroup_id: Some(54321),
+            talkgroup_id: Some(TalkgroupId::new(54321).unwrap()),
             talkgroup_label: Some("Ambulance Dispatch".to_string()),
             talkgroup_group: Some("Medical".to_string()),
             talkgroup_tag: Some("Priority".to_string()),
-            source_radio_id: Some(5432),
+            source_radio_id: Some(RadioId::new(5432).unwrap()),
             talker_alias: Some("Medic 15".to_string()),
             audio_filename: Some("emergency_call.mp3".to_string()),
             audio_file_path: Some("/storage/ems/2024/01/15/emergency_call.mp3".to_string()),
@@ -671,7 +740,7 @@ mod tests {
                 serde_json::json!({"segments": [{"speaker": 1, "start": 0.0, "end": 32.7}]}),
             ),
             speaker_count: Some(1),
-            frequency: Some(462650000),
+            frequency: Some(Frequency::new(462650000).unwrap()),
             patches: Some("patch1,patch2".to_string()),
             frequencies: Some("462650000,462675000".to_string()),
             sources: Some("source1,source2".to_string()),
@@ -696,13 +765,13 @@ mod tests {
         let call = CallSummary {
             id: call_id,
             call_timestamp: timestamp,
-            system_id: "test_system".to_string(),
+            system_id: SystemId::new("test_system").unwrap(),
             system_label: Some("Test System".to_string()),
-            talkgroup_id: Some(100),
+            talkgroup_id: Some(TalkgroupId::new(100).unwrap()),
             talkgroup_label: Some("Test Group".to_string()),
             talkgroup_group: Some("Testing".to_string()),
             talkgroup_tag: Some("Test".to_string()),
-            source_radio_id: Some(200),
+            source_radio_id: Some(RadioId::new(200).unwrap()),
             talker_alias: Some("Test Unit".to_string()),
             audio_filename: Some("test.mp3".to_string()),
             audio_size_bytes: Some(100000),
@@ -710,7 +779,7 @@ mod tests {
             transcription_status: Some("pending".to_string()),
             transcription_confidence: None,
             transcription_text: None,
-            frequency: Some(150000000),
+            frequency: Some(Frequency::new(150000000).unwrap()),
         };
 
         let response = ListCallsResponse {
@@ -812,7 +881,7 @@ mod tests {
         let call_summary = CallSummary {
             id: Uuid::new_v4(),
             call_timestamp: Utc::now(),
-            system_id: "test".to_string(),
+            system_id: SystemId::new("test").unwrap(),
             system_label: None,
             talkgroup_id: None,
             talkgroup_label: None,
@@ -872,7 +941,7 @@ mod tests {
         let call_summary = CallSummary {
             id: call_id,
             call_timestamp: Utc::now(),
-            system_id: "uuid_test".to_string(),
+            system_id: SystemId::new("uuid_test").unwrap(),
             system_label: None,
             talkgroup_id: None,
             talkgroup_label: None,
@@ -905,7 +974,7 @@ mod tests {
         let call_summary = CallSummary {
             id: Uuid::new_v4(),
             call_timestamp: timestamp,
-            system_id: "datetime_test".to_string(),
+            system_id: SystemId::new("datetime_test").unwrap(),
             system_label: None,
             talkgroup_id: None,
             talkgroup_label: None,
@@ -936,7 +1005,7 @@ pub async fn get_call_audio(
     info!("Retrieving audio for call: {}", call_id);
 
     // First, get the call to find the audio file path
-    let call = match sdrtrunk_database::get_radio_call(&state.pool, call_id).await {
+    let call = match sdrtrunk_storage::get_radio_call(&state.pool, call_id).await {
         Ok(Some(call)) => call,
         Ok(None) => {
             return Err((

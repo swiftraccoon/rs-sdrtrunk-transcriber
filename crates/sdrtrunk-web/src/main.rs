@@ -1,20 +1,36 @@
-//! Web server for SDRTrunk transcriber interface
+//! Web server for `SDRTrunk` transcriber interface
 #![forbid(unsafe_code)]
+#![allow(clippy::type_complexity)]
 
+use sdrtrunk_protocol::Config;
 use sdrtrunk_web::build_app;
 use std::net::{IpAddr, SocketAddr};
 use tracing::{info, warn};
 
+/// Load configuration from environment variables and config files.
+///
+/// # Errors
+///
+/// Returns an error if configuration cannot be loaded or parsed.
+fn load_config() -> Result<Config, Box<dyn std::error::Error>> {
+    let cfg = config::Config::builder()
+        .add_source(config::File::with_name("config").required(false))
+        .add_source(config::Environment::with_prefix("SDRTRUNK").separator("_"))
+        .build()?;
+
+    Ok(cfg.try_deserialize()?)
+}
+
 #[tokio::main]
-#[allow(clippy::type_complexity)]
+#[allow(clippy::missing_panics_doc, clippy::missing_errors_doc)]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Initialize tracing
     tracing_subscriber::fmt::init();
 
     // Get configuration
-    let config = sdrtrunk_core::Config::load().unwrap_or_else(|e| {
+    let config = load_config().unwrap_or_else(|e| {
         warn!("Failed to load config: {}, using defaults", e);
-        sdrtrunk_core::Config::default()
+        Config::default()
     });
 
     // Build the application with configuration

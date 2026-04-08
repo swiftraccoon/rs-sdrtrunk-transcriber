@@ -1,8 +1,10 @@
 //! Audio player component for playing radio call recordings
+#![allow(unreachable_pub)]
 
 use leptos::prelude::*;
 
 /// Audio player component for call recordings
+#[allow(unreachable_pub, dead_code)]
 #[component]
 pub fn AudioPlayer(
     /// URL of the audio file to play

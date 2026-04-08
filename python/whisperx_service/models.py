@@ -149,3 +149,19 @@ class ServiceStats(BaseModel):
     avg_processing_time_ms: float = 0.0
     total_audio_duration: float = 0.0
     uptime_seconds: float = 0.0
+
+
+class AudioValidationRequest(BaseModel):
+    """Request for audio file validation."""
+    audio_path: Path
+
+
+class AudioValidationResponse(BaseModel):
+    """Response for audio file validation."""
+    valid: bool
+    format: Optional[str] = None
+    duration_seconds: Optional[float] = None
+    sample_rate: Optional[int] = None
+    channels: Optional[int] = None
+    file_size_bytes: int
+    error_message: Optional[str] = None

@@ -1,8 +1,10 @@
 //! Dashboard page showing live call activity and system status
+#![allow(unreachable_pub)]
 
 use leptos::prelude::*;
 
 /// Main dashboard page component
+#[allow(unreachable_pub)]
 #[component]
 pub fn Dashboard() -> impl IntoView {
     view! {

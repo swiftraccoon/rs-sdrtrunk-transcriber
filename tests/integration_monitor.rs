@@ -3,7 +3,7 @@
 
 mod common;
 
-use sdrtrunk_core::{context_error::Result, context_error};
+use anyhow::Result;
 use common::*;
 use std::path::PathBuf;
 use std::time::Duration;
@@ -63,7 +63,7 @@ async fn test_file_pattern_recognition() -> Result<()> {
     // Test filename parsing for each file
     let valid_count = test_files
         .iter()
-        .map(|filename| sdrtrunk_core::utils::parse_sdrtrunk_filename(filename))
+        .map(|filename| sdrtrunk_protocol::utils::parse_sdrtrunk_filename(filename))
         .filter(|result| result.is_ok())
         .count();
     
@@ -160,9 +160,9 @@ async fn test_concurrent_file_processing() -> Result<()> {
             tokio::fs::write(&file_path, content).await?;
             
             // Parse filename to verify it's valid
-            let parsed = sdrtrunk_core::utils::parse_sdrtrunk_filename(&filename)?;
+            let parsed = sdrtrunk_protocol::utils::parse_sdrtrunk_filename(&filename)?;
             
-            Ok::<(String, sdrtrunk_core::types::FileData), sdrtrunk_core::context_error::ContextError>((filename, parsed))
+            Ok::<(String, sdrtrunk_protocol::types::FileData), anyhow::Error>((filename, parsed))
         });
         handles.push(handle);
     }
@@ -217,7 +217,7 @@ async fn test_monitoring_resilience() -> Result<()> {
     for (filename, description) in problematic_scenarios {
         println!("Testing: {description}");
         
-        let sanitized = sdrtrunk_core::utils::sanitize_filename(&filename);
+        let sanitized = sdrtrunk_protocol::utils::sanitize_filename(&filename);
         println!("Original: {filename}");
         println!("Sanitized: {sanitized}");
         
@@ -287,7 +287,7 @@ async fn test_directory_structure_management() -> Result<()> {
     ];
     
     for date in test_dates {
-        let date_path = sdrtrunk_core::utils::create_date_path(&base_dir, &date);
+        let date_path = sdrtrunk_protocol::utils::create_date_path(&base_dir, &date);
         std::fs::create_dir_all(&date_path)?;
         
         assert!(date_path.exists());
@@ -316,15 +316,15 @@ async fn test_monitor_configuration() -> Result<()> {
     
     // Test different configuration scenarios
     let config_scenarios = vec![
-        ("Basic config", sdrtrunk_core::Config::default()),
+        ("Basic config", sdrtrunk_protocol::Config::default()),
         ("Development config", {
-            let mut config = sdrtrunk_core::Config::default();
+            let mut config = sdrtrunk_protocol::Config::default();
             config.logging.level = "debug".to_string();
             config.server.workers = 2;
             config
         }),
         ("Production config", {
-            let mut config = sdrtrunk_core::Config::default();
+            let mut config = sdrtrunk_protocol::Config::default();
             config.logging.level = "info".to_string();
             config.server.workers = 8;
             config.api.enable_auth = true;
@@ -342,7 +342,7 @@ async fn test_monitor_configuration() -> Result<()> {
         
         // Read back and verify
         let loaded_config_str = std::fs::read_to_string(&config_file)?;
-        let loaded_config: sdrtrunk_core::Config = serde_json::from_str(&loaded_config_str)?;
+        let loaded_config: sdrtrunk_protocol::Config = serde_json::from_str(&loaded_config_str)?;
         
         assert_eq!(config.logging.level, loaded_config.logging.level);
         assert_eq!(config.server.workers, loaded_config.server.workers);
@@ -438,7 +438,7 @@ async fn test_monitoring_performance() -> Result<()> {
                 // Create small file
                 tokio::fs::write(&file_path, format!("Content {file_index}")).await?;
                 
-                Ok::<PathBuf, sdrtrunk_core::context_error::ContextError>(file_path)
+                Ok::<PathBuf, anyhow::Error>(file_path)
             });
             batch_handles.push(handle);
         }
@@ -477,7 +477,7 @@ async fn test_monitoring_performance() -> Result<()> {
         let entry = entry?;
         let filename = entry.file_name().to_string_lossy().to_string();
         
-        if let Ok(_parsed) = sdrtrunk_core::utils::parse_sdrtrunk_filename(&filename) {
+        if let Ok(_parsed) = sdrtrunk_protocol::utils::parse_sdrtrunk_filename(&filename) {
             parse_successes += 1;
         }
     }

@@ -5,8 +5,9 @@ use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 use uuid::Uuid;
 
-// Re-export from core
-pub use sdrtrunk_core::{TranscriptionConfig, TranscriptionStatus};
+// Re-export from protocol and types
+pub use sdrtrunk_protocol::config::TranscriptionConfig;
+pub use sdrtrunk_types::TranscriptionStatus;
 
 /// Transcription request
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -35,6 +36,7 @@ pub struct TranscriptionRequest {
 
 impl TranscriptionRequest {
     /// Create a new transcription request
+    #[must_use]
     pub fn new(call_id: Uuid, audio_path: PathBuf) -> Self {
         Self {
             id: Uuid::new_v4(),
@@ -48,6 +50,7 @@ impl TranscriptionRequest {
     }
 
     /// Create with custom options
+    #[must_use]
     pub fn with_options(call_id: Uuid, audio_path: PathBuf, options: TranscriptionOptions) -> Self {
         Self {
             id: Uuid::new_v4(),
@@ -61,6 +64,7 @@ impl TranscriptionRequest {
     }
 
     /// Set priority
+    #[must_use]
     pub const fn with_priority(mut self, priority: i32) -> Self {
         self.priority = priority;
         self
@@ -73,6 +77,10 @@ impl TranscriptionRequest {
 }
 
 /// Transcription processing options
+///
+/// The boolean fields represent independent feature toggles for the transcription
+/// pipeline, not a state machine, so `struct_excessive_bools` is suppressed.
+#[allow(clippy::struct_excessive_bools)]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TranscriptionOptions {
     /// Language hint (None for auto-detect)
@@ -247,6 +255,12 @@ pub struct TranscriptionStats {
 }
 
 #[cfg(test)]
+#[allow(
+    clippy::unwrap_used,
+    clippy::missing_panics_doc,
+    clippy::float_cmp,
+    clippy::indexing_slicing
+)]
 mod tests {
     use super::*;
 

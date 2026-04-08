@@ -1,9 +1,11 @@
 //! Call list component for displaying radio calls
+#![allow(unreachable_pub)]
 
-use leptos::prelude::*;
 use crate::api_client::CallSummary;
+use leptos::prelude::*;
 
 /// Call list component
+#[allow(unreachable_pub, dead_code)]
 #[component]
 pub fn CallList(
     /// List of calls to display
@@ -29,18 +31,29 @@ pub fn CallList(
 }
 
 /// Individual call row component
+#[allow(unreachable_pub)]
 #[component]
 fn CallRow(call: CallSummary) -> impl IntoView {
+    let system_display = call
+        .system_label
+        .clone()
+        .unwrap_or_else(|| call.system_id.to_string());
+    let talkgroup_display = call
+        .talkgroup_label
+        .clone()
+        .or_else(|| call.talkgroup_id.map(|id| id.to_string()))
+        .unwrap_or_else(|| "Unknown".to_string());
+
     view! {
         <div class="call-row">
             <div class="call-col">
                 {call.call_timestamp.format("%Y-%m-%d %H:%M:%S").to_string()}
             </div>
             <div class="call-col">
-                {call.system_label.unwrap_or(call.system_id)}
+                {system_display}
             </div>
             <div class="call-col">
-                {call.talkgroup_label.or(call.talkgroup_id.map(|id| id.to_string())).unwrap_or_else(|| "Unknown".to_string())}
+                {talkgroup_display}
             </div>
             <div class="call-col">
                 <button class="btn btn-sm">Play</button>

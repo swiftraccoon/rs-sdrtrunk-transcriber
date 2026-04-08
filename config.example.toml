@@ -35,11 +35,11 @@ workers = 4
 #
 # Environment variable override:
 # - Set API_HOST environment variable to override this value
-# - Useful for Docker, Kubernetes, or multi-host deployments
+# - Useful for Podman, Kubernetes, or multi-host deployments
 #
 # Common deployment scenarios:
 # - Development (same host):        api_host = "localhost"
-# - Docker Compose:                 api_host = "api"  (service name)
+# - Podman pod / compose:            api_host = "api"  (service name)
 # - Kubernetes:                     api_host = "sdrtrunk-api-service"
 # - Remote server:                  api_host = "10.0.1.50"
 # ============================================================================
@@ -79,51 +79,18 @@ failed_dir = "/tmp/sdrtrunk/failed"   # Failed processing files
 temp_dir = "/tmp/sdrtrunk/temp"       # Temporary processing directory
 
 [transcription]
-# Transcription service configuration
+# Transcription is handled by the standalone sdrtrunk-worker binary.
+# The API server enqueues jobs to PostgreSQL; workers claim and process them.
+# Scale workers with: kubectl scale deployment sdrtrunk-worker --replicas=N
 enabled = true
-service = "whisperx"                  # Service type: whisperx, mock
-service_port = 8002                   # WhisperX service port
-model_size = "large-v3"               # Model size: tiny, base, small, medium, large, large-v2, large-v3
-device = "cpu"                        # Device: cpu, cuda, mps
-compute_type = "int8"                 # Compute type: int8, float16, float32
-batch_size = 8                        # Batch size for processing
-workers = 2                           # Number of worker threads
-queue_size = 500                      # Maximum queue size
-timeout_seconds = 300                 # Processing timeout in seconds
-language = "en"                       # Language code (e.g., en, es, fr)
+timeout_seconds = 300                 # Max seconds per transcription job
+workers = 1                           # (legacy, ignored — scale via K8s replicas)
+queue_size = 500                      # (legacy, ignored — queue is in PostgreSQL)
 
-# IMPORTANT: Get your token from https://huggingface.co/settings/tokens
-# This token is required for speaker diarization models
-hf_token = "YOUR_HF_TOKEN_HERE"
+# Worker configuration (used by sdrtrunk-worker binary)
+# poll_interval_seconds = 2           # How often workers poll for new jobs
+# heartbeat_interval_seconds = 30     # How often workers send heartbeat
+# worker_id = "worker-1"             # Worker ID (defaults to HOSTNAME or UUID)
 
-# VAD (Voice Activity Detection)
-vad_filter = true                     # Enable Silero VAD for speech detection
-vad_onset = 0.5                       # Speech start detection threshold
-vad_offset = 0.35                     # Speech end detection threshold
-chunk_length = 30                     # Length of audio chunks in seconds
-
-# Decoding + fallback parameters
-temperature = [0.0, 0.2, 0.4]         # Temperature fallback array (starts greedy, falls back to sampling)
-beam_size = 5                         # Number of beams in beam search
-best_of = 5                           # Number of candidates when sampling
-patience = 1.2                        # Beam decoding patience factor
-length_penalty = 1.0                  # Token length penalty coefficient
-repetition_penalty = 1.2              # Penalty for repeated tokens
-no_repeat_ngram_size = 3              # Prevent n-gram repetition
-
-# Hallucination/silence guards
-compression_ratio_threshold = 2.0     # Threshold for compression ratio heuristic
-logprob_threshold = -1.0              # Average log probability threshold
-no_speech_threshold = 0.5             # Probability threshold for no speech detection
-
-# Context & timestamps
-condition_on_previous_text = false    # Use previous text as context
-without_timestamps = true             # WhisperX-native mode; alignment supplies word times
-suppress_blank = true                 # Suppress blank outputs
-suppress_tokens = "-1"                # Tokens to suppress (-1 = default list)
-
-# Diarization (speaker identification)
-diarization = true                    # Enable speaker diarization
-min_speakers = 2                      # Minimum number of speakers (tighten if you know the channel)
-max_speakers = 3                      # Maximum number of speakers
-word_timestamps = true                # Extract word-level timestamps
+# Whisper model path (set via WHISPER_MODEL_PATH env var in K8s)
+# Download: curl -L -o ggml-large-v3.bin https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-large-v3.bin
