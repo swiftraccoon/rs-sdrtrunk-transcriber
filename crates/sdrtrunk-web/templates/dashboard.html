@@ -75,6 +75,26 @@
             --input-border: rgba(124,58,237,0.2);
         }
 
+        /* === GLOW & GRADIENT ANIMATIONS === */
+        @keyframes electricPulse {
+            0%, 100% { box-shadow: 0 0 8px rgba(124,58,237,0.08), 0 0 30px rgba(124,58,237,0.04); }
+            50% { box-shadow: 0 0 14px rgba(124,58,237,0.18), 0 0 50px rgba(124,58,237,0.08); }
+        }
+        @keyframes borderFlow {
+            0% { background-position: 0% 50%; }
+            50% { background-position: 100% 50%; }
+            100% { background-position: 0% 50%; }
+        }
+        @keyframes glowBreath {
+            0%, 100% { opacity: 0.5; filter: brightness(1); }
+            50% { opacity: 1; filter: brightness(1.15); }
+        }
+        @keyframes arcShimmer {
+            0%, 100% { opacity: 0.3; transform: scaleX(0.8); }
+            30% { opacity: 0.8; transform: scaleX(1.05); }
+            60% { opacity: 0.4; transform: scaleX(0.95); }
+        }
+
         * { margin: 0; padding: 0; box-sizing: border-box; }
 
         body {
@@ -121,13 +141,22 @@
             background: var(--header-bg);
             backdrop-filter: blur(20px) saturate(1.5);
             -webkit-backdrop-filter: blur(20px) saturate(1.5);
-            border-bottom: 1px solid var(--border-color);
+            border-bottom: none;
             color: var(--header-text);
             padding: 0 32px;
             display: flex;
-            justify-content: space-between;
             align-items: center;
             height: 56px;
+            gap: 32px;
+        }
+        .header::after {
+            content: '';
+            position: absolute;
+            bottom: 0; left: 0; right: 0;
+            height: 2px;
+            background: linear-gradient(90deg, transparent, #2563eb 15%, #7c3aed 35%, #c9a227 55%, #f6d365 70%, #c9a227 85%, transparent);
+            background-size: 200% 100%;
+            animation: borderFlow 8s ease-in-out infinite;
         }
         .header h1 {
             font-family: 'Cinzel', serif;
@@ -154,6 +183,7 @@
         .nav a:hover { color: var(--text-color); background: var(--accent-soft); }
         .nav a.active { color: var(--gold-color); background: rgba(201,162,39,0.08); }
         .theme-toggle {
+            margin-left: auto;
             background: transparent;
             color: var(--text-muted);
             border: 1px solid var(--border-color);
@@ -170,7 +200,10 @@
             font-family: 'Cinzel', serif;
             font-size: 20px;
             font-weight: 600;
-            color: var(--text-color);
+            background: linear-gradient(135deg, var(--text-color) 0%, var(--accent-color) 60%, var(--gold-color) 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
             margin: 20px 0 16px;
             letter-spacing: 0.5px;
         }
@@ -184,6 +217,23 @@
             border: 1px solid var(--border-subtle);
             backdrop-filter: blur(10px);
             -webkit-backdrop-filter: blur(10px);
+            position: relative;
+            overflow: hidden;
+            transition: box-shadow 0.4s ease, border-color 0.4s ease;
+        }
+        .card::before {
+            content: '';
+            position: absolute;
+            top: 0; left: 0; right: 0;
+            height: 2px;
+            background: linear-gradient(90deg, #2563eb, #7c3aed, #c9a227, #f6d365);
+            background-size: 300% 100%;
+            animation: borderFlow 6s ease-in-out infinite;
+            opacity: 0.6;
+        }
+        .card:hover {
+            border-color: rgba(139,92,246,0.2);
+            box-shadow: 0 0 20px rgba(124,58,237,0.08), 0 4px 30px rgba(0,0,0,0.2);
         }
         .card h3 {
             margin-top: 0;
@@ -192,22 +242,41 @@
             font-weight: 600;
             letter-spacing: 1.5px;
             text-transform: uppercase;
-            color: var(--text-muted);
+            background: linear-gradient(135deg, var(--text-muted), var(--accent-color));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
         }
         .status {
             padding: 12px 18px;
-            background: linear-gradient(135deg, rgba(16,185,129,0.1), rgba(16,185,129,0.05));
+            background: linear-gradient(135deg, rgba(16,185,129,0.1) 0%, rgba(37,99,235,0.05) 50%, rgba(124,58,237,0.08) 100%);
             color: var(--success-color);
-            border-left: 3px solid var(--success-color);
             border-radius: 10px;
             border: 1px solid rgba(16,185,129,0.15);
             margin: 1rem 0;
             font-size: 13px;
+            position: relative;
+            overflow: hidden;
+            animation: electricPulse 6s ease-in-out infinite;
+        }
+        .status::before {
+            content: '';
+            position: absolute;
+            left: 0; top: 0; bottom: 0;
+            width: 3px;
+            background: linear-gradient(180deg, #10b981, #2563eb, #7c3aed);
+            animation: glowBreath 4s ease-in-out infinite;
         }
         .status strong { color: var(--text-color); }
 
         /* Processing Queue Banner */
-        .processing-queue { background: var(--processing-bg); border: 1px solid var(--processing-border); border-radius: 10px; padding: 0.75rem 1rem; margin-bottom: 1rem; cursor: pointer; transition: all 0.3s ease; }
+        .processing-queue {
+            background: linear-gradient(135deg, rgba(201,162,39,0.06) 0%, rgba(246,211,101,0.03) 50%, rgba(124,58,237,0.04) 100%);
+            border: 1px solid var(--processing-border);
+            border-radius: 10px; padding: 0.75rem 1rem; margin-bottom: 1rem;
+            cursor: pointer; transition: all 0.3s ease;
+            animation: electricPulse 5s ease-in-out infinite;
+        }
         .processing-queue.empty { display: none; }
         .processing-queue-header { display: flex; justify-content: space-between; align-items: center; }
         .processing-queue-summary { font-size: 13px; color: var(--text-color); }
@@ -249,7 +318,20 @@
         .filter-select:hover { border-color: var(--accent-color); }
 
         /* Transcription Feed */
-        .transcription-feed { background: var(--card-bg); border-radius: 12px; padding: 1.5rem; border: 1px solid var(--border-subtle); backdrop-filter: blur(10px); }
+        .transcription-feed {
+            background: var(--card-bg); border-radius: 12px; padding: 1.5rem;
+            border: 1px solid var(--border-subtle); backdrop-filter: blur(10px);
+            position: relative; overflow: hidden;
+        }
+        .transcription-feed::before {
+            content: '';
+            position: absolute;
+            top: 0; left: 0; right: 0;
+            height: 2px;
+            background: linear-gradient(90deg, transparent, #7c3aed, #2563eb, #c9a227, transparent);
+            background-size: 200% 100%;
+            animation: borderFlow 8s ease-in-out infinite;
+        }
         .transcription-feed h2 {
             margin-top: 0;
             font-family: 'Cinzel', serif;
@@ -257,7 +339,10 @@
             font-weight: 600;
             letter-spacing: 1.5px;
             text-transform: uppercase;
-            color: var(--text-muted);
+            background: linear-gradient(135deg, var(--text-muted), var(--accent-color));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
             border-bottom: 1px solid var(--border-color);
             padding-bottom: 12px;
         }
@@ -267,16 +352,20 @@
         .feed-container::-webkit-scrollbar-thumb { background: rgba(139,92,246,0.2); border-radius: 3px; }
         .feed-container::-webkit-scrollbar-thumb:hover { background: rgba(139,92,246,0.4); }
         .transcription-card {
-            background: var(--card-bg-solid);
-            border-left: 3px solid var(--accent-color);
+            background: linear-gradient(135deg, var(--card-bg-solid) 0%, rgba(124,58,237,0.03) 100%);
             border-radius: 8px;
             padding: 12px 16px;
             margin-bottom: 8px;
             border: 1px solid var(--border-subtle);
-            border-left: 3px solid var(--accent-color);
-            transition: all 0.15s ease;
+            border-left: 3px solid transparent;
+            border-image: linear-gradient(180deg, #7c3aed, #2563eb, #10b981) 1;
+            border-image-slice: 0 0 0 3;
+            transition: all 0.3s ease;
         }
-        .transcription-card:hover { background: var(--accent-soft); }
+        .transcription-card:hover {
+            background: linear-gradient(135deg, var(--card-bg-solid) 0%, rgba(124,58,237,0.08) 100%);
+            box-shadow: 0 0 15px rgba(124,58,237,0.1), 0 2px 20px rgba(0,0,0,0.15);
+        }
         .transcription-card.new { animation: slideIn 0.5s ease; }
         @keyframes slideIn { from { opacity: 0; transform: translateY(-20px); } to { opacity: 1; transform: translateY(0); } }
         .transcription-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; flex-wrap: wrap; gap: 0.5rem; }
@@ -329,6 +418,37 @@
         .dashboard-stats { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin-top: 1rem; }
         .card p { font-size: 13px; margin: 6px 0; color: var(--text-muted); }
         .card p strong { color: var(--text-color); }
+
+        /* Gradient scrollbar */
+        .feed-container::-webkit-scrollbar-thumb {
+            background: linear-gradient(180deg, rgba(124,58,237,0.3), rgba(37,99,235,0.3), rgba(124,58,237,0.3));
+            border-radius: 3px;
+        }
+
+        /* Electrical glow spots — subtle animated highlights */
+        .search-filter-bar {
+            position: relative;
+            overflow: hidden;
+        }
+        .search-filter-bar::after {
+            content: '';
+            position: absolute;
+            top: -1px; left: 20%; width: 60%; height: 2px;
+            background: linear-gradient(90deg, transparent, rgba(124,58,237,0.4), rgba(37,99,235,0.3), transparent);
+            animation: arcShimmer 5s ease-in-out infinite;
+        }
+
+        /* Gradient accent on filter button hover */
+        .filter-select:hover {
+            background: linear-gradient(135deg, rgba(124,58,237,0.1), rgba(37,99,235,0.08));
+            border-color: var(--accent-color);
+        }
+
+        /* Enhanced load-more button gradient */
+        .load-more-btn {
+            background: linear-gradient(135deg, rgba(37,99,235,0.12) 0%, rgba(124,58,237,0.15) 40%, rgba(201,162,39,0.08) 100%);
+        }
+
         @media (max-width: 768px) { .dashboard-stats { grid-template-columns: 1fr; } .filter-controls { flex-direction: column; } .transcription-header { flex-direction: column; align-items: flex-start; } }
     </style>
 </head>
@@ -350,7 +470,7 @@
     <div class="status">
         <strong>System Status:</strong> Online |
         <strong>API:</strong> Available |
-        <strong>WhisperX:</strong> Connected
+        <strong>Workers:</strong> <span id="worker-status">Checking...</span>
     </div>
 
     <div class="dashboard-layout">
@@ -412,7 +532,9 @@
                 <h3>System Health</h3>
                 <p><strong>API Server:</strong> <span id="api-status">Loading...</span></p>
                 <p><strong>Database:</strong> <span id="db-status">Loading...</span></p>
-                <p><strong>WhisperX Service:</strong> <span id="whisperx-status">Loading...</span></p>
+                <p><strong>Queue Pending:</strong> <span id="queue-pending">Loading...</span></p>
+                <p><strong>Queue Processing:</strong> <span id="queue-processing">Loading...</span></p>
+                <p><strong>Completed:</strong> <span id="queue-completed">Loading...</span></p>
                 <p><strong>Storage:</strong> <span id="storage-status">Available</span></p>
             </div>
         </div>
@@ -705,12 +827,25 @@
             document.getElementById('processing-count').textContent = processingCalls.length;
         }
 
-        // System status
+        // System status — fetches from /health endpoint
         function updateSystemStatus() {
             document.getElementById('api-status').textContent = 'Online';
             document.getElementById('db-status').textContent = 'Connected';
-            document.getElementById('whisperx-status').textContent = processingCalls.length > 0 ? 'Processing' : 'Idle';
-            document.getElementById('storage-status').textContent = 'Available';
+            fetch('/health')
+                .then(r => r.json())
+                .then(data => {
+                    if (data.transcription_queue) {
+                        const q = data.transcription_queue;
+                        document.getElementById('queue-pending').textContent = q.pending;
+                        document.getElementById('queue-processing').textContent = q.processing;
+                        document.getElementById('queue-completed').textContent = q.completed;
+                        document.getElementById('worker-status').textContent =
+                            q.processing > 0 ? q.processing + ' active' : 'Idle';
+                    }
+                })
+                .catch(() => {
+                    document.getElementById('worker-status').textContent = 'Unreachable';
+                });
         }
 
         // Search handler (debounced)
