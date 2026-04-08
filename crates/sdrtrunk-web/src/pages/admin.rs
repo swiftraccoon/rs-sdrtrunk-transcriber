@@ -28,6 +28,8 @@ pub struct HealthResponse {
     pub status: String,
     /// Database connectivity details
     pub database: Option<DatabaseHealth>,
+    /// Transcription queue status
+    pub transcription_queue: Option<TranscriptionQueueHealth>,
     /// Server uptime in seconds
     pub uptime_seconds: Option<i64>,
 }
@@ -41,6 +43,19 @@ pub struct DatabaseHealth {
     pub pool_size: u32,
     /// Number of idle connections in the pool
     pub idle_connections: u32,
+}
+
+/// Transcription queue health
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TranscriptionQueueHealth {
+    /// Jobs waiting to be claimed
+    pub pending: i64,
+    /// Jobs currently being processed
+    pub processing: i64,
+    /// Jobs completed
+    pub completed: i64,
+    /// Jobs that failed
+    pub failed: i64,
 }
 
 /// Create API key request
@@ -230,6 +245,26 @@ pub fn AdminPanel() -> impl IntoView {
                                                         <div class="health-item">
                                                             <span class="health-label">Pool Size:</span>
                                                             <span class="health-value">{db.pool_size}</span>
+                                                        </div>
+                                                    }.into_any()
+                                                })}
+                                                {health.transcription_queue.map(|q| {
+                                                    view! {
+                                                        <div class="health-item">
+                                                            <span class="health-label">Queue Pending:</span>
+                                                            <span class="health-value">{q.pending}</span>
+                                                        </div>
+                                                        <div class="health-item">
+                                                            <span class="health-label">Processing:</span>
+                                                            <span class="health-value">{q.processing}</span>
+                                                        </div>
+                                                        <div class="health-item">
+                                                            <span class="health-label">Completed:</span>
+                                                            <span class="health-value">{q.completed}</span>
+                                                        </div>
+                                                        <div class="health-item">
+                                                            <span class="health-label">Failed:</span>
+                                                            <span class="health-value">{q.failed}</span>
                                                         </div>
                                                     }.into_any()
                                                 })}

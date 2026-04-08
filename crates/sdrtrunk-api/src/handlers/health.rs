@@ -17,8 +17,23 @@ pub struct HealthResponse {
     pub timestamp: chrono::DateTime<chrono::Utc>,
     /// Database connectivity status
     pub database: DatabaseHealth,
+    /// Transcription queue status
+    pub transcription_queue: Option<TranscriptionQueueHealth>,
     /// System uptime in seconds
     pub uptime_seconds: u64,
+}
+
+/// Transcription queue health
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TranscriptionQueueHealth {
+    /// Jobs waiting to be claimed
+    pub pending: i64,
+    /// Jobs currently being processed
+    pub processing: i64,
+    /// Jobs completed
+    pub completed: i64,
+    /// Jobs that failed permanently
+    pub failed: i64,
 }
 
 /// Database health status
@@ -107,11 +122,26 @@ pub async fn health_check(
     #[allow(clippy::cast_possible_truncation)]
     let response_time = start_time.elapsed().as_millis() as u64;
 
+    // Check transcription queue
+    let queue_health = match sdrtrunk_storage::jobs::JobQueue::stats(&state.pool).await {
+        Ok(stats) => Some(TranscriptionQueueHealth {
+            pending: stats.pending,
+            processing: stats.processing,
+            completed: stats.completed,
+            failed: stats.failed,
+        }),
+        Err(e) => {
+            error!("Queue stats check failed: {e}");
+            None
+        }
+    };
+
     let health_response = HealthResponse {
         status: "healthy".to_string(),
         version: env!("CARGO_PKG_VERSION").to_string(),
         timestamp: chrono::Utc::now(),
         database: database_health,
+        transcription_queue: queue_health,
         uptime_seconds: get_uptime_seconds(),
     };
 
@@ -333,6 +363,7 @@ mod tests {
                 },
                 response_time_ms: 15,
             },
+            transcription_queue: None,
             uptime_seconds: 3600,
         };
 
@@ -457,6 +488,7 @@ mod tests {
                 },
                 response_time_ms: 12,
             },
+            transcription_queue: None,
             uptime_seconds: 7200,
         };
 
@@ -625,6 +657,7 @@ mod tests {
                 },
                 response_time_ms: 15,
             },
+            transcription_queue: None,
             uptime_seconds: 3600,
         };
 
