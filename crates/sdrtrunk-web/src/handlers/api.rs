@@ -181,6 +181,16 @@ pub async fn serve_audio(
 }
 
 /// Health check endpoint
-pub async fn health_check() -> &'static str {
-    "OK"
+/// Health check — proxies to API server's /health endpoint
+pub async fn health_check(
+    State(state): State<Arc<AppState>>,
+) -> Json<serde_json::Value> {
+    let url = format!("{}/health", state.api_client.base_url());
+    match reqwest::get(&url).await {
+        Ok(resp) => match resp.json::<serde_json::Value>().await {
+            Ok(data) => Json(data),
+            Err(_) => Json(serde_json::json!({"status": "error", "message": "Invalid health response"})),
+        },
+        Err(e) => Json(serde_json::json!({"status": "error", "message": format!("API unreachable: {e}")})),
+    }
 }

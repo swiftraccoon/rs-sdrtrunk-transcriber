@@ -20,6 +20,12 @@ pub struct ApiClient {
 }
 
 impl ApiClient {
+    /// Get the base URL of the API server.
+    #[must_use]
+    pub fn base_url(&self) -> &str {
+        &self.base_url
+    }
+
     /// Create a new API client
     pub fn new(base_url: impl Into<String>) -> Self {
         Self {

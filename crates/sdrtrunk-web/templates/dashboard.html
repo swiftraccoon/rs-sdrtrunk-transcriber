@@ -657,7 +657,16 @@
                 if (!statsData.error) {
                     document.getElementById('calls-today').textContent = statsData.calls_last_24h || '0';
                     document.getElementById('total-calls').textContent = statsData.total_calls || '0';
-                    document.getElementById('transcribed-count').textContent = completedTranscriptions.length;
+                    // Fetch queue stats for transcribed count
+                    try {
+                        const healthResp = await fetch('/health');
+                        const healthData = await healthResp.json();
+                        if (healthData.transcription_queue) {
+                            document.getElementById('transcribed-count').textContent = healthData.transcription_queue.completed;
+                        }
+                    } catch (_) {
+                        document.getElementById('transcribed-count').textContent = completedTranscriptions.length;
+                    }
                     updateSystemStatus();
                 }
             } catch (error) {
